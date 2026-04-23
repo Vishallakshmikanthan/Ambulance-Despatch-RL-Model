@@ -1,0 +1,19 @@
+class StrategyAdapter:
+
+    def __init__(self):
+        self.priority_weight = {
+            "CRITICAL": 1.0,
+            "HIGH": 1.0,
+            "NORMAL": 1.0
+        }
+
+    def update(self, metrics):
+        """
+        Adjust strategy based on performance
+        """
+        if metrics.get("avg_reward", 0) < 0:
+            self.priority_weight["CRITICAL"] *= 1.2
+            self.priority_weight["HIGH"] *= 1.1
+
+    def get_weights(self):
+        return self.priority_weight

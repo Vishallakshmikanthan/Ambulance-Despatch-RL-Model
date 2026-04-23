@@ -6,6 +6,12 @@ _SEVERITY_RANK = {
     Severity.NORMAL: 2,
 }
 
+_DEFAULT_WEIGHTS = {
+    "CRITICAL": 1.0,
+    "HIGH": 1.0,
+    "NORMAL": 1.0,
+}
+
 
 class DispatcherAgent:
     """
@@ -13,27 +19,32 @@ class DispatcherAgent:
     and the nearest idle ambulance.
     """
 
-    def select_candidate(self, observation: ObservationModel):
+    def select_candidate(self, observation: ObservationModel, weights: dict = None):
         """
         Select top priority emergency and candidate ambulance.
 
         Logic:
-        - prioritize CRITICAL > HIGH > NORMAL
+        - prioritize CRITICAL > HIGH > NORMAL scaled by adaptive weights
         - then lowest time_remaining
         - choose nearest idle ambulance
 
         Returns dict {"ambulance_id": int, "emergency_id": str} or None.
         """
+        if weights is None:
+            weights = _DEFAULT_WEIGHTS
+
         idle_ambs = [a for a in observation.ambulances if a.state == AmbulanceState.IDLE]
         unassigned = [e for e in observation.emergencies if not e.assigned]
 
         if not idle_ambs or not unassigned:
             return None
 
-        target_emg = min(
-            unassigned,
-            key=lambda e: (_SEVERITY_RANK.get(e.severity, 3), e.time_remaining),
-        )
+        def priority_score(e):
+            base_priority = _SEVERITY_RANK.get(e.severity, 3)
+            weight = weights.get(e.severity.value if hasattr(e.severity, "value") else str(e.severity), 1.0)
+            return base_priority * weight, e.time_remaining
+
+        target_emg = min(unassigned, key=priority_score)
 
         best_amb = min(
             idle_ambs,
