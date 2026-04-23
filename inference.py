@@ -31,6 +31,15 @@ from tasks.hard import HardConfig
 from grader_easy import grade_easy
 from grader_medium import grade_medium
 from grader_hard import grade_hard
+from tasks.graders import grade_easy as history_grade_easy
+from tasks.graders import grade_medium as history_grade_medium
+from tasks.graders import grade_hard as history_grade_hard
+
+_HISTORY_GRADERS = {
+    "easy": history_grade_easy,
+    "medium": history_grade_medium,
+    "hard": history_grade_hard,
+}
 
 # ---------------------------------------------------------------------------
 # Logging — all debug/info to stderr; stdout is ONLY [START]/[STEP]/[END]
@@ -179,10 +188,12 @@ def run_task(task_name: str, config_class, grader_func) -> None:
     env = AmbulanceEnvironment(config.to_dict())
 
     rewards: List[float] = []
+    history: List[dict] = []
     steps_taken = 0
     score = 0.0
     success = False
 
+    logging.info("[START] %s", task_name)
     log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
 
     try:
@@ -206,8 +217,10 @@ def run_task(task_name: str, config_class, grader_func) -> None:
             error = None
 
             rewards.append(reward)
+            history.append({"reward": reward, "info": {"step": step, "done": done}})
             steps_taken = step
 
+            logging.info("[STEP] %d %s", step, f"{reward:.2f}")
             log_step(step=step, action=_action_str(action), reward=reward, done=done, error=error)
 
             if done:
@@ -238,6 +251,13 @@ def run_task(task_name: str, config_class, grader_func) -> None:
         score = grader_func(episode_info)
         score = float(max(0.0, min(1.0, score)))
         success = score > 0.0
+
+        # History-based score using tasks/graders.py
+        history_grader = _HISTORY_GRADERS.get(task_name)
+        if history_grader is not None and history:
+            history_score = history_grader(history)
+            logging.info("[END] history_score=%.4f", history_score)
+            print(f"[END] SCORE: {history_score:.4f}", flush=True)
 
     except Exception as exc:
         logging.critical("Task %s crashed: %s", task_name, exc, exc_info=True)
