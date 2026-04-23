@@ -242,7 +242,7 @@ class AmbulanceEnvironment:
             if pre_states[amb.id] == AmbulanceState.TRANSPORTING and post_states[amb.id] == AmbulanceState.RETURNING:
                 rubric.hospital_delivery += 10.0
                 hosp = self.hospitals.get(amb.target_hosp_id)
-                if hosp: hosp.admit()
+                if hosp: hosp.release()
 
         # 5. Idle penalty and idle_fraction tracking
         idle_count = len([a for a in self.fleet.ambulances if a.state == AmbulanceState.IDLE])
@@ -257,9 +257,6 @@ class AmbulanceEnvironment:
         self.metrics["idle_fraction"] = (
             self._idle_steps / total_ambulance_steps if total_ambulance_steps > 0 else 0.0
         )
-
-        if self.step_count % 10 == 0:
-            for h in self.hospitals.values(): h.release()
 
         self.last_rubric = rubric
         done = self.step_count >= self.max_steps

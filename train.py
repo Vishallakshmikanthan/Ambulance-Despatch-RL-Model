@@ -6,7 +6,7 @@ import matplotlib
 matplotlib.use("Agg")  # Non-interactive backend — safe in headless / CI environments
 import matplotlib.pyplot as plt
 
-from env.environment import AmbulanceEnv
+from env.environment import AmbulanceEnvironment as AmbulanceEnv
 from rl.state_encoder import StateEncoder
 from rl.action_mapper import ActionMapper
 from rl.action_mask import ActionMask
@@ -96,8 +96,6 @@ def main():
 
             # Update demand predictor and hotspots
             predictor.update(next_obs)
-            if step % 20 == 0:
-                env.set_predicted_hotspots(predictor.predict(n=5))
 
             # Encode next state
             next_state = encoder.encode(next_obs)

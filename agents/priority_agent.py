@@ -165,7 +165,7 @@ class PriorityAgent:
                 return self._heuristic_fallback(observation)
             
             # 5. ADD DEBUG PRINT
-            print("FINAL ACTION:", amb_id, emg_id, hosp_id)
+            logging.debug("FINAL ACTION: %s %s %s", amb_id, emg_id, hosp_id)
 
             # Validate IDs exist in observation
             amb_exists = any(a.id == amb_id for a in observation.ambulances) if amb_id is not None else False

@@ -13,9 +13,7 @@ class StateEncoder:
     """
     
     # Feature Configuration
-    MAX_AMBULANCES = 5
     MAX_EMERGENCIES = 10
-    MAX_HOSPITALS = 5
     
     # Normalization Constants
     MAX_NODES = 100
@@ -23,7 +21,9 @@ class StateEncoder:
     TIME_NORM = 50
     CAPACITY_NORM = 50
     
-    def __init__(self, max_nodes: int = None):
+    def __init__(self, max_nodes: int = None, max_ambulances: int = 6, max_hospitals: int = 4):
+        self.max_ambulances = max_ambulances
+        self.max_hospitals = max_hospitals
         # Deterministic mappings for one-hot encoding
         self.state_map = {
             AmbulanceState.IDLE: 0,
@@ -47,7 +47,7 @@ class StateEncoder:
         features = []
         
         # 1. Encode Ambulances
-        for i in range(self.MAX_AMBULANCES):
+        for i in range(self.max_ambulances):
             if i < len(observation.ambulances):
                 amb = observation.ambulances[i]
                 
@@ -90,7 +90,7 @@ class StateEncoder:
                 features.extend([0.0] * 6)
                 
         # 3. Encode Hospitals
-        for i in range(self.MAX_HOSPITALS):
+        for i in range(self.max_hospitals):
             if i < len(observation.hospitals):
                 hosp = observation.hospitals[i]
                 
@@ -120,4 +120,4 @@ class StateEncoder:
     @property
     def feature_dim(self) -> int:
         """Returns the fixed size of the encoded state vector."""
-        return (self.MAX_AMBULANCES * 8) + (self.MAX_EMERGENCIES * 6) + (self.MAX_HOSPITALS * 4)
+        return (self.max_ambulances * 8) + (self.MAX_EMERGENCIES * 6) + (self.max_hospitals * 4)

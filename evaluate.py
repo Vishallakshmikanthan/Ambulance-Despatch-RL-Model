@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from env.environment import AmbulanceEnv
+from env.environment import AmbulanceEnvironment as AmbulanceEnv
 from rl.state_encoder import StateEncoder
 from rl.action_mapper import ActionMapper
 from rl.action_mask import ActionMask
