@@ -15,5 +15,13 @@ class StrategyAdapter:
             self.priority_weight["CRITICAL"] *= 1.2
             self.priority_weight["HIGH"] *= 1.1
 
+    def adjust_strategy(self, metrics):
+        """Fine-grained weight adjustment based on avg_reward signal."""
+        if metrics.get("avg_reward", 0) < 0:
+            self.priority_weight["CRITICAL"] *= 1.5
+        if metrics.get("avg_reward", 0) > 10:
+            self.priority_weight["NORMAL"] *= 1.1
+        print("[ADAPT] Updated weights:", self.priority_weight)
+
     def get_weights(self):
         return self.priority_weight
