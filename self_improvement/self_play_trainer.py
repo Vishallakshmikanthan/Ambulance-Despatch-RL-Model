@@ -140,10 +140,12 @@ class SelfPlayTrainer:
                 for _ in range(scenario_cfg.max_steps):
                     state = self.encoder.encode(obs)
                     action_idx, action_model, mask = self.action_mapper(obs)
-                    next_obs, reward, done, _ = env.step(action_model)
+                    next_obs = env.step(action_model)
+                    reward = next_obs.reward
+                    done = next_obs.done
                     next_state = self.encoder.encode(next_obs)
-                    self.agent.remember(state, action_idx, reward, next_state, done)
-                    self.agent.replay()  # type: ignore
+                    self.agent.store(state, action_idx, reward, next_state, done)
+                    self.agent.train_step()  # type: ignore
                     episode_reward += reward
                     obs = next_obs
                     if done:
@@ -195,7 +197,8 @@ class SelfPlayTrainer:
             for _ in range(cfg.max_steps):
                 state = self.encoder.encode(obs)
                 _, action_model, mask = self.action_mapper(obs)
-                obs, reward, done, _ = env.step(action_model)
+                obs = env.step(action_model)
+                done = obs.done
                 if done:
                     break
             score = self.score_fn(env.metrics)
@@ -213,7 +216,8 @@ class SelfPlayTrainer:
             obs = env._get_observation()
             for _ in range(cfg.max_steps):
                 action = self.expert.act(obs)
-                obs, _, done, _ = env.step(action)
+                obs = env.step(action)
+                done = obs.done
                 if done:
                     break
             scores.append(self.score_fn(env.metrics))

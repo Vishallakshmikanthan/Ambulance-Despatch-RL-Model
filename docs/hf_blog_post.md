@@ -62,14 +62,16 @@ python train.py --episodes 500 --marl
 The DQN agent learns a 124-dimensional state representation covering ambulance positions,
 emergency urgency, hospital occupancy, and traffic conditions.
 
-### 2. GRPO via HuggingFace TRL
+### 2. GRPO via HuggingFace TRL (future work)
 
 ```bash
 python train_grpo.py --steps 100 --output-dir outputs/grpo
 ```
 
-LLMs receive the observation as structured JSON and must output a valid dispatch action.
-The 9-component rubric provides separate reward signals, preventing reward hacking.
+The GRPO training pipeline is implemented and ready. An LLM receives the observation as
+structured JSON and must output a valid dispatch action. The 9-component rubric provides
+separate reward signals, preventing reward hacking. Full LLM fine-tuning runs are planned
+as the next step beyond this hackathon submission.
 
 ## Results
 
@@ -79,14 +81,14 @@ The 9-component rubric provides separate reward signals, preventing reward hacki
 | GreedyAgent | ~0.89 | ~0.18 | ~0.30 |
 | RepositioningOracle | **0.923** | **0.176** | **0.482** |
 
-The RepositioningOracle establishes the upper bound. GRPO-trained LLMs are closing this gap.
+The RepositioningOracle establishes the current upper bound. Full GRPO/LLM fine-tuning on this environment is the next step — the reward signal and training pipeline are ready.
 
 ## Try It
 
 ```bash
 # Run the environment locally
-git clone https://github.com/Vishallakshmikanthan/Ambulance-Despatch-RL-Model.git
-cd Ambulance-Despatch-RL-Model
+git clone https://github.com/CSNEHA20/Meta_PyTorch_OpenEnv_Hackathon.git Ambulance-OpenENV
+cd Ambulance-OpenENV
 pip install -r requirements.txt
 python inference.py  # See [START]/[STEP]/[END] scores
 ```
@@ -98,8 +100,8 @@ to watch the real-time dispatch dashboard.
 
 Run training directly in your browser:
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Vishallakshmikanthan/Ambulance-Despatch-RL-Model/blob/main/notebooks/Ambulance_GRPO_Training.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/CSNEHA20/Meta_PyTorch_OpenEnv_Hackathon/blob/main/notebooks/Ambulance_GRPO_Training.ipynb)
 
 ## Code
 
-[GitHub Repository](https://github.com/Vishallakshmikanthan/Ambulance-Despatch-RL-Model)
+[GitHub Repository](https://github.com/CSNEHA20/Meta_PyTorch_OpenEnv_Hackathon)

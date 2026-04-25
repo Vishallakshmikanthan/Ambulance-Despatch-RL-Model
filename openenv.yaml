@@ -125,7 +125,7 @@ tasks:
       lambda_param: 0.6
       seed: 42
     grader: grader_hard.grade_hard
-    baseline_score: 0.658
+    baseline_score: 0.482
 rfc_compliance:
   - RFC-001  # Base Env API
   - RFC-002  # Auto-Discovery (/tools)

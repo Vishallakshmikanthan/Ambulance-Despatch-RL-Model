@@ -199,9 +199,10 @@ class AmbulanceQAgent:
         batch = self.memory.sample(self.batch_size)
         # Handle both PER (tuple with weights/indices) and simple buffers
         if len(batch) == 3:
-            (states, actions, rewards, next_states, dones), weights, indices = batch
+            samples, indices, weights = batch
+            states, actions, rewards, next_states, dones = zip(*samples)
         else:
-            states, actions, rewards, next_states, dones = batch
+            states, actions, rewards, next_states, dones = zip(*batch)
             weights = np.ones(self.batch_size, dtype=np.float32)
             indices = None
 

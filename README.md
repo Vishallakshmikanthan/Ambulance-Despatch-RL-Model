@@ -51,10 +51,9 @@ Simulates India's 108/112 emergency dispatch system under life-or-death time pre
 | Resource | Link |
 |---------|------|
 | 🤗 **HuggingFace Space** (live demo) | [spaces/vishallakshmikanthan/Ambulance-OpenENV](https://huggingface.co/spaces/vishallakshmikanthan/Ambulance-OpenENV) |
-| 📓 **Colab Training Notebook** | [grpo_colab.ipynb](notebooks/grpo_colab.ipynb) |
+| 📓 **Colab Training Notebook** | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/CSNEHA20/Meta_PyTorch_OpenEnv_Hackathon/blob/main/notebooks/Ambulance_GRPO_Training.ipynb) [Ambulance_GRPO_Training.ipynb](notebooks/Ambulance_GRPO_Training.ipynb) |
 | 📝 **HuggingFace Blog Post** | *(link your blog post here)* |
 | 🎥 **YouTube Demo Video** | *(link your YouTube video here)* |
-| 📊 **WandB Training Run** | *(link your WandB run here if available)* |
 
 ---
 
@@ -535,10 +534,21 @@ python train_final.py
 # Saves reward_curve.png to the repo root
 ```
 
+### GRPO Training Reward Curve
+
+![GRPO Reward Curve](grpo_reward_curve.png)
+*Figure: Q-Agent (demo training — GRPO pending compute credits) training reward curve. x-axis = episode, y-axis = episode reward.*
+
+### Before vs After Training
+
+![Before vs After](grpo_before_after.png)
+*Figure: Dispatch score before and after training on the easy task (Q-Agent demo).*
+
 ### Baseline vs Trained Comparison
 
 | Agent | Type | Avg Episode Reward |
 |-------|------|--------------------|
+
 | `RandomAgent` | Random baseline | ~0–5 |
 | `DQNAgent` (final) | Trained | Improves over 500 episodes |
 | `RepositioningOracle` | Oracle upper bound | Best |

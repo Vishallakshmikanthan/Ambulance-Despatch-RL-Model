@@ -80,6 +80,8 @@ class LongHorizonAmbulanceEnvironment(AmbulanceEnvironment):
 
     def reset(self, seed: Optional[int] = None) -> ObservationModel:
         obs = super().reset(seed=seed)
+        if not hasattr(self, 'history_encoder'):
+            return obs
         self.history_encoder.reset()
         self._window_scores = []
         self._window_start_served = 0

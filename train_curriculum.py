@@ -109,8 +109,8 @@ def train(args):
             next_base = encoder.encode(next_obs)
             next_state = env.encode_augmented_state(next_base)
 
-            agent.remember(state, action_idx, reward, next_state, done)
-            agent.replay()
+            agent.store(state, action_idx, reward, next_state, done)
+            agent.train_step()
 
             total_reward += reward
             obs = next_obs

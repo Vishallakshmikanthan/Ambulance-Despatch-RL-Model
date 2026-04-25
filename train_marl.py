@@ -168,9 +168,9 @@ def train(args):
             leader_action_idx = _resolve_team_action(final_actions, coord_signals)
             action_model = action_idx_to_model(leader_action_idx, obs, mapper)
 
-            next_obs, reward, done, info = env.step(action_model)
-            if not isinstance(info, dict):
-                info = {}
+            next_obs = env.step(action_model)
+            reward = next_obs.reward
+            done = next_obs.done
 
             # Distribute reward to agents
             team_r = reward
@@ -249,10 +249,11 @@ def _resolve_team_action(
 def _plot_rewards(team_rewards, scores, out_dir: Path):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
 
-    window = 20
+    window = min(20, len(team_rewards))
     smoothed = np.convolve(team_rewards, np.ones(window) / window, mode="valid")
     ax1.plot(team_rewards, alpha=0.3, color="#3b82f6", label="Raw")
-    ax1.plot(range(window - 1, len(team_rewards)), smoothed, color="#3b82f6", label=f"{window}-ep MA")
+    if len(smoothed) > 0:
+        ax1.plot(range(window - 1, len(team_rewards)), smoothed, color="#3b82f6", label=f"{window}-ep MA")
     ax1.set_title("MARL Team Reward over Training")
     ax1.set_xlabel("Episode")
     ax1.set_ylabel("Team Reward")
@@ -261,7 +262,8 @@ def _plot_rewards(team_rewards, scores, out_dir: Path):
 
     smoothed_s = np.convolve(scores, np.ones(window) / window, mode="valid")
     ax2.plot(scores, alpha=0.3, color="#10b981", label="Raw Score")
-    ax2.plot(range(window - 1, len(scores)), smoothed_s, color="#10b981", label=f"{window}-ep MA")
+    if len(smoothed_s) > 0:
+        ax2.plot(range(window - 1, len(scores)), smoothed_s, color="#10b981", label=f"{window}-ep MA")
     ax2.axhline(0.7, color="#ef4444", linestyle="--", label="Target 0.70")
     ax2.set_title("Episode Score (served/total) over Training")
     ax2.set_xlabel("Episode")
