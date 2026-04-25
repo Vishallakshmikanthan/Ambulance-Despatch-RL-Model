@@ -46,88 +46,78 @@ Simulates India's 108/112 emergency dispatch system under life-or-death time pre
 
 ---
 
-## � Key Links
-
-| Resource | Link |
-|---------|------|
-| 🤗 **HuggingFace Space** (live demo) | [spaces/vishallakshmikanthan/Ambulance-OpenENV](https://huggingface.co/spaces/vishallakshmikanthan/Ambulance-OpenENV) |
-| 📓 **Colab Training Notebook** | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/CSNEHA20/Meta_PyTorch_OpenEnv_Hackathon/blob/main/notebooks/Ambulance_GRPO_Training.ipynb) [Ambulance_GRPO_Training.ipynb](notebooks/Ambulance_GRPO_Training.ipynb) |
-| 📝 **HuggingFace Blog Post** | *(link your blog post here)* |
-| 🎥 **YouTube Demo Video** | *(link your YouTube video here)* |
-
----
-
-## �👥 Team
-
-| Name | Role | GitHub |
-|------|------|--------|
-| **SNEHA C** | Team Lead | [@CSNEHA20](https://github.com/CSNEHA20) |
-| **Vishal Lakshmikanthan** | Member | [@Vishallakshmikanthan](https://github.com/Vishallakshmikanthan) |
-
----
-
 ## 📑 Table of Contents
 
-- [Overview](#-overview)
-- [Why Ambulance Dispatch?](#-why-ambulance-dispatch)
-- [Key Features](#-key-features)
-- [Architecture](#-architecture)
-- [Environment Design](#-environment-design)
-  - [City Graph](#city-graph)
-  - [Ambulance Fleet (FSM)](#ambulance-fleet-fsm)
+- [🎯 What is This Project?](#-what-is-this-project)
+- [🏥 Why Ambulance Dispatch?](#-why-ambulance-dispatch)
+- [✨ Key Features](#-key-features)
+- [🏗️ System Architecture](#-system-architecture)
+- [🎮 The Simulation Environment](#-the-simulation-environment)
+  - [City Graph: The Road Network](#city-graph-the-road-network)
+  - [Ambulance Fleet: 7-State FSM](#ambulance-fleet-7-state-fsm)
   - [Emergency Generator](#emergency-generator)
   - [Traffic Engine](#traffic-engine)
   - [Hospital Network](#hospital-network)
-- [Action Space](#-action-space)
-- [Observation Space](#-observation-space)
-- [Reward Rubric (RFC 004)](#-reward-rubric-rfc-004)
-- [Tasks & Grading](#-tasks--grading)
+- [🕹️ Action Space](#-action-space)
+- [👁️ Observation Space](#-observation-space)
+- [🏆 Reward System (RFC 004)](#-reward-system-rfc-004)
+- [📊 Three Difficulty Levels](#-three-difficulty-levels)
   - [Easy Task](#easy-task)
   - [Medium Task](#medium-task)
   - [Hard Task](#hard-task)
-- [Agents](#-agents)
-- [Inference & Log Format](#-inference--log-format)
-- [Baseline Scores](#-baseline-scores)
-- [RFC Compliance](#-rfc-compliance)
-- [API Endpoints](#-api-endpoints)
-- [Dashboard & Visualisation](#-dashboard--visualisation)
-- [Getting Started](#-getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Running Inference](#running-inference)
-  - [Running the Server](#running-the-server)
-  - [Running Tests](#running-tests)
-  - [Docker Deployment](#docker-deployment)
-- [DQN Training Pipeline](#-dqn-training-pipeline)
-- [Project Structure](#-project-structure)
-- [Environment Variables](#-environment-variables)
-- [Tech Stack](#-tech-stack)
-- [Deployment](#-deployment)
-- [Future Improvements](#-future-improvements)
-- [License](#-license)
+- [🤖 Agents](#-agents)
+- [🧠 RL Training Infrastructure](#-rl-training-infrastructure)
+- [🔄 Multi-Agent RL](#-multi-agent-rl)
+- [⏱️ Long-Horizon Planning](#-long-horizon-planning)
+- [🎭 Self-Improvement Loop](#-self-improvement-loop)
+- [🔌 API Endpoints](#-api-endpoints)
+- [📺 Dashboard & Visualization](#-dashboard--visualization)
+- [🚀 Getting Started](#-getting-started)
+- [📁 Complete Project Structure](#-complete-project-structure)
+- [🛠️ Tech Stack](#-tech-stack)
+- [👥 Team](#-team)
+- [📜 License](#-license)
 
 ---
 
-## 🌐 Overview
+## 🎯 What is This Project?
 
-This project implements a fully OpenEnv-compatible reinforcement learning environment where AI agents manage a fleet of ambulances across a procedurally generated city. The agent must dispatch ambulances to incoming emergencies, navigate dynamic traffic, route patients to appropriate hospitals, and balance competing priorities — all under strict time constraints where delays cost lives.
+This is a **production-grade OpenEnv-compatible reinforcement learning environment** where AI agents learn to manage emergency ambulance dispatch across a city. Think of it as a "flight simulator" for emergency dispatchers — but instead of pilots, we're training AI agents to make life-saving decisions under pressure.
 
-The environment produces a **dense, shaped reward signal** via an RFC 004 Rubric with **9 named components**, enabling fine-grained reward decomposition for training and diagnostic analysis.
+### The Core Challenge
+
+An AI agent must:
+1. **Monitor** a fleet of ambulances moving through a city
+2. **Receive** emergency calls arriving randomly across the city
+3. **Decide** which ambulance goes to which emergency
+4. **Route** patients to appropriate hospitals (considering capacity and specialties)
+5. **Optimize** for response time, priority triage, and resource utilization
+
+All while dealing with:
+- Rush-hour traffic (1.5-2.5x slower travel)
+- Random road incidents (3.0x blockage)
+- Hospital capacity limits (8 beds each)
+- Emergency severity tiers (CRITICAL expires in 10 steps!)
+- Specialty routing (Trauma/Cardiac/General/Paediatric hospitals)
 
 ---
 
 ## 🏥 Why Ambulance Dispatch?
 
-> *In India, over 40 million emergency calls are handled annually by 108/112 dispatch networks. Every 60-second delay in CRITICAL response increases mortality by 10%.*
+> *"In India, over 40 million emergency calls are handled annually by 108/112 dispatch networks. Every 60-second delay in CRITICAL response increases mortality by 10%."*
 > — GVK EMRI National Statistics
 
-Ambulance dispatch is a **real-world professional task** performed by trained operators in every country. Optimising it has direct, measurable impact on human lives. This environment models the core decision-making challenge:
+Ambulance dispatch is a **real-world professional task** that:
+- Has direct, measurable impact on human lives
+- Requires split-second decision making under uncertainty
+- Involves complex multi-objective optimization
+- Balances competing constraints (time, distance, priority, capacity)
+- Is performed by trained operators in every country
 
-- **Which ambulance** should respond? (nearest vs. fastest vs. least busy)
-- **Which hospital** should receive the patient? (nearest vs. specialty vs. capacity)
-- **When to reposition** idle units? (proactive coverage vs. reactive dispatch)
-
-These decisions must be made under uncertainty (stochastic arrivals), time pressure (emergencies expire), and resource constraints (finite fleet, limited hospital beds).
+By creating an RL environment for this task, we can:
+- Train AI agents to assist or augment human dispatchers
+- Research optimal dispatch policies
+- Simulate "what-if" scenarios (disasters, pandemics, infrastructure changes)
 
 ---
 
@@ -135,218 +125,295 @@ These decisions must be made under uncertainty (stochastic arrivals), time press
 
 | Feature | Description |
 |---------|-------------|
-| 🏙️ **Procedural City** | Barabási-Albert scale-free graph (20 nodes, m=3) — realistic hub-and-spoke topology |
-| 🚑 **5-State FSM Fleet** | IDLE → EN_ROUTE → AT_SCENE → TRANSPORTING → RETURNING lifecycle per ambulance |
-| 🔴 **3 Severity Tiers** | CRITICAL (expires in 10 steps), HIGH (20 steps), NORMAL (30 steps) |
-| 🚦 **Dynamic Traffic** | Rush-hour multipliers (1.5–2.5×) + random road incidents (3.0× blockage) |
-| 🏨 **Hospital Network** | Capacity limits, specialty routing (Trauma/Cardiac/General/Paediatric) |
-| 📊 **RFC 004 Rubric** | 9 named reward components for per-component training introspection |
+| 🏙️ **Procedural City** | Barabási-Albert scale-free graph (20-100 nodes) with realistic hub-and-spoke topology |
+| 🚑 **7-State FSM Fleet** | IDLE → DISPATCHED → EN_ROUTE → AT_SCENE → TRANSPORTING → RETURNING → REPOSITIONING |
+| 🔴 **3 Severity Tiers** | CRITICAL (10-step timeout, +30 bonus), HIGH (20-step, +10), NORMAL (30-step) |
+| 🚦 **Dynamic Traffic** | Rush-hour multipliers (1.5–2.5×) + random incidents (3.0× blockage) |
+| 🏨 **Hospital Network** | 8-bed capacity limits, specialty routing (Trauma/Cardiac/General/Paediatric) |
+| 📊 **RFC 004 Rubric** | 9 named reward components for fine-grained training introspection |
 | 🔌 **Full RFC Suite** | RFC 001–005 compliant (Base API, Auto-Discovery, MCP, Rubric, Concurrency) |
 | 🧪 **58 Tests** | Comprehensive pytest suite covering environment, graders, and models |
 | 🖥️ **Next.js Dashboard** | Real-time dark-mode UI with city map, dispatch queue, and reward charts |
-| 🐳 **Docker-Ready** | Single-command deployment to HuggingFace Spaces or any container host |
-| 🔁 **Deterministic Seeding** | Byte-identical episode replay across any run (seed=42) |
+| 🐳 **Docker-Ready** | Single-command deployment to HuggingFace Spaces |
+| 🔁 **Deterministic Seeding** | Byte-identical episode replay across runs |
+| 🧠 **Multi-Agent RL** | Independent DQN agents per ambulance with conflict detection |
+| ⏱️ **Long-Horizon** | 500-step episodes with demand surges and curriculum learning |
+| 🎭 **Self-Improvement** | Weakness detection + adversarial scenario generation |
 
 ---
 
-## 🏗 Architecture
+## 🏗️ System Architecture
+
+### High-Level Data Flow
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  inference.py  /  any LLM client  /  RL agent               │
-│  POST /env/reset  →  POST /env/step  →  GET /env/state      │
-└────────────────────────────┬────────────────────────────────┘
-                             │ HTTP / WebSocket
-┌────────────────────────────▼────────────────────────────────┐
-│  FastAPI Server (server/app.py, port 7860)                   │
-│  ├── OpenEnv Core Endpoints   (/env/reset, /env/step)        │
-│  ├── RFC 002 Auto-Discovery   (GET /tools)                   │
-│  ├── RFC 003 MCP Protocol     (GET /mcp)                     │
-│  ├── Episode History          (GET /episodes)                │
-│  ├── Session Management       (SUPPORTS_CONCURRENT=True)     │
-│  └── WebSocket Live Feed      (/ws/live @ 2 Hz)             │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────┐
-│  AmbulanceEnvironment (env/environment.py)                   │
-│  ├── CityGraph         (NetworkX Barabási-Albert, n=20,m=3)  │
-│  ├── AmbulanceFleet    (5-state FSM × n_ambulances)          │
-│  ├── EmergencyGenerator(Poisson λ arrival, 3 severity tiers) │
-│  ├── TrafficEngine     (rush-hour + incident multipliers)    │
-│  ├── HospitalNetwork   (capacity + specialty constraints)    │
-│  └── Rubric Engine     (RFC 004, 9 named reward components)  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         AGENT / LLM / RL MODEL                              │
+│  Makes dispatch decisions based on observations                            │
+└─────────────────────────────────┬───────────────────────────────────────────┘
+                                  │ POST /env/step
+                                  │
+┌─────────────────────────────────▼───────────────────────────────────────────┐
+│                      FASTAPI SERVER (Port 7860)                            │
+│  ┌─────────────────────────────────────────────────────────────────────┐  │
+│  │  Core OpenEnv Endpoints    │  RFC Extensions  │  Dashboard Endpoints   │  │
+│  │  • POST /env/reset         │  • GET /tools    │  • GET /marl/status    │  │
+│  │  • POST /env/step          │  • GET /mcp      │  • GET /curriculum/... │  │
+│  │  • GET /env/state          │  • WS /ws/live   │  • GET /selfplay/...  │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────┬───────────────────────────────────────────┘
+                                  │
+┌─────────────────────────────────▼───────────────────────────────────────────┐
+│                    AMBULANCEENVIRONMENT (Core Engine)                       │
+│                                                                              │
+│  ┌──────────────┐  ┌─────────────────┐  ┌──────────────────────────┐    │
+│  │  CityGraph   │  │  AmbulanceFleet │  │   EmergencyGenerator       │    │
+│  │  (NetworkX)  │  │  (7-state FSM)  │  │   (Poisson λ arrivals)     │    │
+│  │  • 20 nodes  │  │  • n ambulances │  │   • CRITICAL/HIGH/NORMAL   │    │
+│  │  • BA graph  │  │  • state machine│  │   • Random node placement  │    │
+│  │  • Dijkstra  │  │  • ETA tracking │  │   • Time-limited           │    │
+│  └──────────────┘  └─────────────────┘  └──────────────────────────┘    │
+│                                                                              │
+│  ┌──────────────┐  ┌─────────────────┐  ┌──────────────────────────┐    │
+│  │ TrafficEngine│  │ HospitalNetwork │  │      RubricEngine         │    │
+│  │ • Rush-hour  │  │ • 8-bed cap     │  │  9 reward components       │    │
+│  │ • Incidents  │  │ • Specialty     │  │  per-step calculation      │    │
+│  │ • Multipliers│  │ • Overflow      │  │  (RFC 004 compliant)       │    │
+│  └──────────────┘  └─────────────────┘  └──────────────────────────┘    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-```mermaid
-graph TD
-    A[Environment Server] --> B[Traffic Engine]
-    A --> C[Emergency Generator]
-    A --> D[Hospital Network]
-    
-    B -->|Rush Hours| E[Dynamic Multiplier 1.5–2.5×]
-    C -->|Poisson λ| F[CRITICAL / HIGH / NORMAL]
-    D -->|Capacity| G[Overflow Re-routing]
-    
-    H[Ambulance Fleet] -->|5-State FSM| I[IDLE → EN_ROUTE → AT_SCENE → TRANSPORTING → RETURNING]
-    
-    J[Agent / LLM] -->|Action| A
-    A -->|Observation + Rubric| J
+### Module Dependencies
+
+```
+env/models.py ───────────────────────────────────────┐
+     │                                               │
+     ▼                                               ▼
+env/simulator.py (CityGraph, Ambulance, etc.)  server/models (Action/Observation)
+     │                                               │
+     └──────────────┬────────────────────────────────┘
+                    │
+                    ▼
+          env/environment.py (AmbulanceEnvironment)
+                    │
+        ┌───────────┼───────────┐
+        │           │           │
+        ▼           ▼           ▼
+   agents/*.py   rl/*.py    server/app.py
+   (decision    (training  (HTTP API +
+    makers)      agents)    WebSocket)
 ```
 
 ---
 
-## 🎮 Environment Design
+## 🎮 The Simulation Environment
 
-### City Graph
+### City Graph: The Road Network
 
-The city is modelled as a **Barabási-Albert scale-free graph** with 20 nodes and attachment parameter m=3. This produces a realistic hub-and-spoke topology where a few central nodes have high connectivity (major intersections) while peripheral nodes have low degree (suburbs). Edge weights represent travel time and are affected by the traffic engine.
+The city is modeled as a **Barabási-Albert scale-free graph** — a mathematical model that produces realistic urban road networks where:
+- A few central nodes have high connectivity (major intersections, downtown)
+- Most nodes have low connectivity (suburbs, residential areas)
+- Creates natural "hubs" that match real city topology
 
-### Ambulance Fleet (FSM)
+**Technical Details:**
+- Default: 20 nodes, attachment parameter m=3
+- Each edge has a base travel time (2-8 minutes)
+- Shortest paths pre-computed via Dijkstra for O(1) lookup
+- Traffic multipliers dynamically adjust travel times
 
-Each ambulance follows a **5-state finite state machine**:
+### Ambulance Fleet: 7-State FSM
+
+Each ambulance follows a strict **finite state machine** with 7 states:
 
 ```
-IDLE ──dispatch──▶ EN_ROUTE ──arrive──▶ AT_SCENE ──load──▶ TRANSPORTING ──deliver──▶ RETURNING ──home──▶ IDLE
+┌──────┐ dispatch  ┌───────────┐  travel   ┌──────────┐
+│ IDLE │──────────▶│ DISPATCHED│──────────▶│ EN_ROUTE │
+└──────┘           └───────────┘           └────┬─────┘
+   ▲                                            │
+   │ return                                     │ arrive
+   │                                            ▼
+┌──────┐           ┌───────────┐           ┌──────────┐
+│RETURN│◀──────────│TRANSPORTING│◀─────────│ AT_SCENE │
+│_ING  │   deliver  └───────────┘   load    └──────────┘
+└──────┘
+
+Special state:
+┌─────────────┐
+│REPOSITIONING│  ← Proactive staging to hotspots
+└─────────────┘
 ```
 
-| State | Description | Duration |
-|-------|-------------|----------|
-| `IDLE` | Available for dispatch at current node | — |
-| `EN_ROUTE` | Travelling to emergency scene | Dijkstra shortest path × traffic |
-| `AT_SCENE` | Loading patient (1 step) | 1 step |
-| `TRANSPORTING` | Travelling to designated hospital | Dijkstra shortest path × traffic |
-| `RETURNING` | Returning to base/staging node | Varies |
+**State Descriptions:**
+| State | Description | Typical Duration |
+|-------|-------------|------------------|
+| `IDLE` | Available for dispatch at current location | — |
+| `DISPATCHED` | Just assigned, calculating route | 1 step |
+| `EN_ROUTE` | Travelling to emergency scene | Dijkstra time × traffic |
+| `AT_SCENE` | Loading patient | 2-4 steps |
+| `TRANSPORTING` | Moving patient to hospital | Dijkstra time × traffic |
+| `RETURNING` | Going back to base after delivery | Varies |
+| `REPOSITIONING` | Proactive staging to predicted hotspot | Dijkstra time |
 
 ### Emergency Generator
 
-Emergencies arrive via a **Poisson process** with configurable arrival rate (λ). Each emergency has:
-- **Node**: Random graph node where the incident occurs
-- **Severity**: CRITICAL (highest urgency, shortest timeout), HIGH, or NORMAL
-- **Timeout**: Steps remaining before the emergency expires unserved (CRITICAL=10, HIGH=20, NORMAL=30)
+Emergencies arrive via a **Poisson process** (like real phone calls):
+- λ (lambda) controls arrival rate (e.g., 0.3 = ~0.3 emergencies per step)
+- Each emergency has:
+  - **Location**: Random node on the graph
+  - **Severity**: CRITICAL (25%), HIGH (35%), NORMAL (40%)
+  - **Time Limit**: CRITICAL=10 steps, HIGH=20, NORMAL=30
+  - **Specialty Need**: Implicitly determined by severity
+
+If an emergency times out unserved → **timeout penalty (-15.0)**
 
 ### Traffic Engine
 
-The traffic system has two components:
-1. **Rush-hour multiplier**: Global travel-time multiplier that oscillates between 1.0× (off-peak) and 2.5× (peak hours), activated on hard difficulty
-2. **Incident events**: Random road blockages that apply a 3.0× multiplier to specific edges for several steps
+Two traffic effects make the environment dynamic:
+
+**1. Rush-Hour Multipliers:**
+- 7-9 AM and 5-8 PM: Normal distribution μ=1.6, σ=0.2, clipped [1.2, 2.5]
+- Other hours: Normal μ=1.0, σ=0.05, clipped [0.9, 1.2]
+
+**2. Random Incidents:**
+- 2% chance per step to spawn a road incident
+- Random edge blocked for 5 steps
+- Adds +0.5 to traffic multiplier (max +1.0 from incidents)
 
 ### Hospital Network
 
-Hospitals have:
-- **Fixed capacity**: Maximum concurrent patients (default 8)
-- **Specialty** (hard mode): Trauma, Cardiac, General, or Paediatric — routing to the wrong specialty incurs a penalty
-- **Overflow protection**: Dispatching to a full hospital triggers a `CapacityViolation` penalty (−5.0)
+**Hospital Properties:**
+- **Capacity**: 8 concurrent patients (default)
+- **Current Patients**: Real-time occupancy
+- **Specialty**: Trauma, Cardiac, General, or Paediatric
+
+**Specialty Routing Logic:**
+```python
+CRITICAL → Trauma or Cardiac (life-threatening)
+HIGH     → Trauma or General (serious but stable)
+NORMAL   → General or Paediatric (routine)
+```
+
+Dispatching to the wrong specialty incurs a penalty. Dispatching to a full hospital triggers **CapacityViolation (-5.0)** and requires re-routing.
 
 ---
 
 ## 🕹️ Action Space
 
-Actions are validated by `ActionModel` with Pydantic `extra='forbid'` for zero-tolerance validation:
+The agent sends one action per step (or batch with `step_all()`):
 
 ```python
-class ActionModel(Action):
-    ambulance_id: Optional[int]     # ID of the idle ambulance to dispatch (0-indexed)
-    emergency_id: str               # UUID of the target unassigned emergency
-    hospital_id: Optional[int]      # ID of destination hospital (0-indexed)
-    reposition_node: Optional[int]  # Graph node to reposition idle ambulance to (optional)
-    is_noop: bool = False           # When true, skip dispatch and advance one step
+class ActionModel:
+    ambulance_id: Optional[int]     # Which idle ambulance (0-indexed)
+    emergency_id: str                 # Target emergency UUID
+    hospital_id: Optional[int]        # Destination hospital
+    reposition_node: Optional[int]    # Move idle ambulance here (optional)
+    is_noop: bool = False             # Skip this step
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `ambulance_id` | `int` | For dispatch | 0-indexed ID of an idle ambulance |
-| `emergency_id` | `str` | For dispatch | UUID of an active unassigned emergency |
-| `hospital_id` | `int` | For dispatch | 0-indexed ID of destination hospital |
-| `reposition_node` | `int` | No | Graph node for proactive ambulance staging |
-| `is_noop` | `bool` | No | Skip this step (default: `false`) |
+**Action Validation (Pydantic extra='forbid'):**
+- Invalid ambulance_id → -10 penalty
+- Invalid emergency_id → -10 penalty
+- Invalid hospital_id → -10 penalty
+- Dispatching busy ambulance → Action rejected
+- Dispatching to full hospital → CapacityViolation penalty
+
+**Example Actions:**
+```python
+# Dispatch ambulance 0 to emergency "abc-123", send to hospital 1
+action = ActionModel(
+    ambulance_id=0,
+    emergency_id="abc-123",
+    hospital_id=1
+)
+
+# Reposition ambulance 2 to node 15 (proactive staging)
+action = ActionModel(
+    ambulance_id=2,
+    emergency_id="",
+    hospital_id=None,
+    reposition_node=15,
+    is_noop=False
+)
+
+# Skip this step (let simulation advance)
+action = ActionModel(is_noop=True)
+```
 
 ---
 
 ## 👁️ Observation Space
 
-Returned by `reset()` and `step()` as `ObservationModel`:
+```python
+class ObservationModel:
+    ambulances: List[AmbulanceInfo]      # Fleet status
+    emergencies: List[EmergencyInfo]     # Active incidents
+    hospitals: List[HospitalInfo]        # Hospital network
+    traffic: Dict[str, float]            # {"global": multiplier}
+    step: int                            # Current timestep
+    reward: float                        # Step reward
+    done: bool                           # Episode finished?
+    rubric: Optional[Rubric]             # 9-component breakdown
+```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `ambulances` | `List[AmbulanceInfo]` | Each unit's node, FSM state, ETA, assigned targets |
-| `emergencies` | `List[EmergencyInfo]` | Active unassigned incidents — node, severity, countdown |
-| `hospitals` | `List[HospitalInfo]` | Node, capacity, current occupancy, specialty |
-| `traffic` | `Dict[str, float]` | `"global"` traffic multiplier (1.0 – 2.5×) |
-| `step` | `int` | Current simulation tick |
-| `reward` | `float` | Scalar step reward from RFC 004 Rubric |
-| `reward_model` | `RewardModel` | Typed reward: scalar + named components + served/missed counts |
-| `done` | `bool` | Whether the episode has terminated |
-| `rubric` | `Rubric` | Per-component breakdown for training introspection |
+**Nested Types:**
 
-### Nested Types
+```python
+class AmbulanceInfo:
+    id: int                      # 0, 1, 2, ...
+    node: int                    # Current graph position
+    state: AmbulanceState        # idle/en_route/at_scene/...
+    eta: int                     # Steps until next state
+    target_emg_id: Optional[str] # Assigned emergency
+    target_hosp_id: Optional[int] # Assigned hospital
 
-<details>
-<summary><b>AmbulanceInfo</b></summary>
+class EmergencyInfo:
+    id: str                      # UUID (first 8 chars shown)
+    node: int                    # Incident location
+    severity: Severity           # CRITICAL/HIGH/NORMAL
+    time_remaining: int          # Steps before timeout
+    max_time_remaining: int      # For progress bars
+    assigned: bool               # Ambulance dispatched?
+    spawn_time: int              # When it appeared
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `int` | Ambulance identifier |
-| `node` | `int` | Current graph node |
-| `state` | `AmbulanceState` | FSM state (idle/en_route/at_scene/transporting/returning) |
-| `eta` | `int` | Steps until current action completes |
-| `target_emg_id` | `str?` | Assigned emergency UUID |
-| `target_hosp_id` | `int?` | Assigned hospital ID |
-
-</details>
-
-<details>
-<summary><b>EmergencyInfo</b></summary>
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `str` | UUID identifier |
-| `node` | `int` | Graph node of incident |
-| `severity` | `Severity` | CRITICAL / HIGH / NORMAL |
-| `time_remaining` | `int` | Steps before expiry |
-| `assigned` | `bool` | Whether an ambulance has been dispatched |
-| `spawn_time` | `int` | Step when the emergency appeared |
-
-</details>
-
-<details>
-<summary><b>HospitalInfo</b></summary>
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `int` | Hospital identifier |
-| `node` | `int` | Graph node |
-| `capacity` | `int` | Maximum concurrent patients |
-| `current_patients` | `int` | Current occupancy |
-| `specialty` | `str` | Hospital type (General/Trauma/Cardiac/Paediatric) |
-
-</details>
+class HospitalInfo:
+    id: int                      # 0, 1, 2, ...
+    node: int                    # Location
+    capacity: int                # Max beds (8)
+    current_patients: int        # Occupied beds
+    specialty: str               # Trauma/Cardiac/General/Paediatric
+```
 
 ---
 
-## 🏆 Reward Rubric (RFC 004)
+## 🏆 Reward System (RFC 004)
 
-The environment computes reward via a **9-component Rubric** for fine-grained training introspection:
+The environment computes reward via a **9-component Rubric**:
 
 | # | Component | Trigger | Value | Purpose |
 |---|-----------|---------|-------|---------|
 | 1 | `EmergencyServed` | Ambulance arrives at scene | **+20.0** | Reward successful dispatch |
-| 2 | `SeverityBonus` | CRITICAL/HIGH served | **+10 to +30** | Prioritise high-acuity cases |
-| 3 | `DispatchSpeed` | Rapid response (low wait) | **up to +10.0** | Encourage fast response times |
-| 4 | `HospitalDelivery` | Patient delivered to hospital | **+10.0** | Reward completing the care chain |
-| 5 | `DistancePenalty` | Long travel distance | **−variable** | Discourage inefficient routing |
-| 6 | `TrafficPenalty` | Dispatch during high traffic | **−variable** | Penalise ignoring traffic state |
-| 7 | `IdlePenalty` | Ambulance idle during backlog | **−1.0/step** | Penalise underutilisation |
-| 8 | `CapacityViolation` | Route to full hospital | **−5.0** | Prevent hospital overflow |
-| 9 | `TimeoutPenalty` | Emergency expires unserved | **−15.0** | Penalise missed emergencies |
+| 2 | `SeverityBonus` | CRITICAL served | **+30.0** | Prioritize life-threatening |
+| 2b| `SeverityBonus` | HIGH served | **+10.0** | Prioritize urgent cases |
+| 3 | `DispatchSpeed` | Fast response (low wait) | **0–+10.0** | Encourage rapid response |
+| 4 | `HospitalDelivery` | Patient delivered | **+10.0** | Complete care chain |
+| 5 | `DistancePenalty` | Long travel distance | **−variable** | Discourage inefficient routes |
+| 6 | `TrafficPenalty` | Ignoring traffic | **−variable** | Penalize bad timing |
+| 7 | `IdlePenalty` | Ambulance idle during backlog | **−1.0/step** | Prevent underutilization |
+| 8 | `CapacityViolation` | Route to full hospital | **−5.0** | Prevent overflow |
+| 9 | `TimeoutPenalty` | Emergency expires | **−15.0** | Heavy penalty for misses |
 
-Additionally, a `fairness_score` component tracks equitable coverage across city zones (used in hard grading).
+**Additional Components:**
+- `fairness_score`: Zone coverage equity (hard task)
+- `validation_penalty`: Anti-exploit deductions
+
+**Reward Capping:**
+- Maximum positive per step: 80.0 (prevents reward hacking)
+- Loop detection: −5 × repeat count (capped at −50)
 
 ---
 
-## 📋 Tasks & Grading
-
-Three difficulty levels with distinct configurations and grading formulas:
+## 📊 Three Difficulty Levels
 
 ### Easy Task
 
@@ -354,21 +421,17 @@ Three difficulty levels with distinct configurations and grading formulas:
 |-----------|-------|
 | Ambulances | 2 |
 | Hospitals | 2 |
-| Hospital Capacity | 8 |
+| Steps | 30 |
 | Arrival Rate (λ) | 0.3 |
-| Max Steps | 30 |
-| Severity Levels | NORMAL only |
+| Severities | NORMAL only |
 | Traffic | Disabled |
 | Seed | 42 |
 
-**Grading Formula:**
-```
-For each served emergency:
-    ratio = optimal_response_time / actual_response_time
+**Grading:** Mean of (optimal_time / actual_response_time), clamped [0, 1]
 
-score = mean(ratios), clamped to [0.0, 1.0]
-```
-> Tests basic dispatch correctness. Dispatch immediately + pick nearest hospital.
+**Baseline Score:** 0.923
+
+**What it Tests:** Basic dispatch correctness. Just pick the nearest idle ambulance and nearest hospital.
 
 ---
 
@@ -378,26 +441,24 @@ score = mean(ratios), clamped to [0.0, 1.0]
 |-----------|-------|
 | Ambulances | 4 |
 | Hospitals | 3 |
-| Hospital Capacity | 8 |
+| Steps | 60 |
 | Arrival Rate (λ) | 0.4 |
-| Max Steps | 60 |
-| Severity Levels | All (CRITICAL, HIGH, NORMAL) |
-| Traffic | Mild (1.0–1.3× multiplier) |
+| Severities | CRITICAL, HIGH, NORMAL |
+| Traffic | Mild (1.0–1.3×) |
 | Seed | 42 |
 
-**Grading Formula:**
+**Grading:**
 ```
-served_percentage = served / total_emergencies
-response_score    = max(0.0, 1.0 - avg_response_time / 15.0)
-idle_fraction     = idle_steps / total_steps
-
 score = 0.50 × served_percentage
       + 0.35 × response_score
       - 0.15 × idle_fraction
-
-Clamped to [0.0, 1.0]
 ```
-> Tests fleet coordination, priority dispatch (CRITICAL first), and hospital load balancing.
+
+**Baseline Score:** 0.176
+
+**What it Tests:** Fleet coordination, priority dispatch (CRITICAL first), hospital load balancing.
+
+**Strategy Note:** Repositioning is DISABLED for medium task because the time cost (9+ steps blocking dispatch) outweighs the idle_fraction benefit (0.15 weight).
 
 ---
 
@@ -406,209 +467,402 @@ Clamped to [0.0, 1.0]
 | Parameter | Value |
 |-----------|-------|
 | Ambulances | 6 |
-| Hospitals | 4 (Trauma / Cardiac / General / Paediatric) |
-| Hospital Capacity | 8 |
+| Hospitals | 4 (Trauma, Cardiac, General, Paediatric) |
+| Steps | 100 |
 | Arrival Rate (λ) | 0.6 |
-| Max Steps | 100 |
-| Severity Levels | All (CRITICAL, HIGH, NORMAL) |
-| Traffic | Dynamic (rush-hour 1.5–2.5× + incidents 3.0×) |
-| Specialties | Enabled |
+| Severities | All three tiers |
+| Traffic | Dynamic rush-hour (1.5–2.5×) + incidents |
+| Specialty Routing | Required |
 | Seed | 42 |
 
-**Grading Formula:**
+**Grading:**
 ```
-critical_rate   = critical_served / critical_total
-overall_rate    = served / total_emergencies
+critical_rate = critical_served / critical_total
+overall_rate = served / total_emergencies
 weighted_served = 0.7 × critical_rate + 0.3 × overall_rate
-
-priority_accuracy = priority_correct / priority_total
-fairness_score    = 1 - normalised_std_dev(zone_service_rates)
-overload_penalty  = 0.05 × capacity_violations
 
 score = 0.50 × weighted_served
       + 0.30 × priority_accuracy
       + 0.15 × fairness_score
-      - overload_penalty
-
-Clamped to [0.0, 1.0]
+      - 0.05 × capacity_violations
 ```
-> Tests CRITICAL-first dispatch, specialty routing, zone fairness, and traffic-aware planning.
+
+**Baseline Score:** 0.482
+
+**What it Tests:** CRITICAL-first triage, specialty routing, zone fairness across 4 city zones, traffic-aware planning.
 
 ---
 
 ## 🤖 Agents
 
-### Greedy Priority Agent (`agents/greedy_agent.py`)
-A rule-based agent that prioritises emergencies by severity and dispatches the nearest idle ambulance. Serves as the default baseline — no LLM required.
+### GreedyAgent (`agents/greedy_agent.py`)
+**Type:** Rule-based baseline
 
-### Priority Agent (`agents/priority_agent.py`)
-An LLM-driven dispatch coordinator using structured prompting via the OpenAI-compatible API. Includes a heuristic fallback for 100% availability during API latency or outages.
+Simple nearest-first dispatch:
+1. Find first idle ambulance
+2. Find nearest unassigned emergency (by node difference)
+3. Find nearest hospital to that emergency
 
-### Oracle Agent (`agents/oracle.py`)
-A Dijkstra-based optimal dispatcher that computes globally optimal assignments. Used as an upper-bound reference for evaluating other agents.
-
-### Baseline Agent (`agents/baseline.py`)
-A minimal agent for testing that dispatches the first available ambulance to the first emergency.
+**Use case:** Minimal baseline, testing environment logic
 
 ---
 
-## 📝 Inference & Log Format
+### BaselineAgent (`agents/baseline.py`)
+**Type:** Enhanced rule-based
 
-The inference script (`inference.py`) produces strict `[START]` / `[STEP]` / `[END]` telemetry for automated evaluation:
+Priority-sorted greedy:
+1. Sort emergencies: CRITICAL > HIGH > NORMAL, then by time_remaining
+2. Assign nearest idle ambulance to highest priority
+3. Assign nearest available hospital
 
-```
-[START] task=easy env=ambulance-dispatch model=Qwen/Qwen2.5-72B-Instruct
-[STEP] step=1 action=dispatch(amb=0,emg='abc-123',hosp=0) reward=18.50 done=false error=null
-[STEP] step=2 action=noop() reward=-0.50 done=false error=null
-...
-[END] success=true steps=30 score=0.90 rewards=18.50,-0.50,...
-```
-
-Run inference:
-```bash
-python inference.py              # All three tasks
-python inference.py --task easy  # Single task
-```
+**Use case:** Better baseline that respects severity
 
 ---
 
-## 📊 Baseline Scores
+### OracleAgent (`agents/oracle.py`)
+**Type:** Optimal reference (Dijkstra-based)
 
-All scores **deterministic and reproducible** — seeded with `seed=42`.
+Uses pre-computed shortest paths to make globally optimal assignments:
+- Computes actual travel times (not just node differences)
+- Optimal ambulance-to-emergency matching
+- Upper-bound reference for evaluating other agents
 
-| Task | Ambulances | Steps | Score | Key Signal |
-|------|-----------|-------|-------|------------|
-| **Easy** | 2 | 30 | **0.923** | response_time ≈ optimal_time |
-| **Medium** | 4 | 60 | **0.176** | served_rate × response_efficiency |
-| **Hard** | 6 | 100 | **0.482** | CRITICAL-first + specialty routing |
-
-### Agent Comparison
-
-![Agent Comparison](agent_comparison.png)
-*Figure: Score across Easy/Medium/Hard for 4 agent strategies. RepositioningOracle consistently wins.*
-
-### Training Progress (DQN, 500 episodes)
-
-![Reward Curve](reward_curve.png)
-*Figure: DQN training reward (top) and epsilon decay (bottom). Agent improves from random to structured dispatch.*
-
-### RFC 004 Rubric Breakdown
-
-![Rubric Breakdown](rubric_breakdown.png)
-*Figure: Per-component reward comparison — RepositioningOracle maximizes served/severity/delivery, minimizes penalties.*
-
-### Score Improvement over Baseline
-
-| Task | Baseline | Oracle | Oracle+Reposition |
-|------|---------|--------|-------------------|
-| Easy   | ~0.01 | 0.75 | **0.923** |
-| Medium | ~0.00 | 0.12 | **0.176** |
-| Hard   | ~0.00 | 0.30 | **0.482** |
-
-### Agent Hierarchy
-
-| Agent | Score | Description |
-|-------|-------|-------------|
-| `RepositioningOracle` | Best | Dijkstra dispatch + multi-dispatch + reposition |
-| `OracleAgent` | High | Dijkstra dispatch + priority triage |
-| `BaselineAgent` | Medium | Priority-sorted greedy dispatch |
-| `GreedyAgent` | Low | Simple nearest-first dispatch |
-| `PriorityAgent` | Variable | LLM-powered with heuristic fallback |
-
-> Run `python inference.py` to reproduce all scores.
-> Run `python inference.py --task easy` for a single task.
+**Use case:** Score ceiling estimation, validation
 
 ---
 
-## 📈 Training Evidence
+### RepositioningOracle (`agents/repositioning_oracle.py`)
+**Type:** Best-performing agent (used in inference)
 
-### Reward Curve
+**Features:**
+1. **Multi-dispatch**: All idle ambulances dispatched simultaneously
+2. **Specialty-aware routing**: Matches hospital specialty to emergency severity
+3. **Proactive repositioning**: Moves idle ambulances to predicted hotspots
+4. **Zone fairness**: Spreads repositioned ambulances across all 4 city zones
 
-The DQN agent (`train_final.py`) was trained for 500 episodes. The plot below shows the raw per-episode reward alongside a 20-episode moving average.
+**Hotspot Prediction:**
+```python
+ZONE_CENTERS = [12, 37, 62, 87]  # 4 city zones
 
-![Reward Curve](reward_curve.png)
-
-Generate the plot yourself:
-```bash
-python train_final.py
-# Saves reward_curve.png to the repo root
+# Predict hotspots based on:
+1. Emergency frequency history (Counter)
+2. Zone coverage (ensure all zones represented)
+3. Zone centers as fallback
 ```
 
-### GRPO Training Reward Curve
+**Specialty Mapping:**
+```python
+CRITICAL → Trauma, Cardiac
+HIGH     → Trauma, General
+NORMAL   → General, Paediatric
+```
 
-![GRPO Reward Curve](grpo_reward_curve.png)
-*Figure: Q-Agent (demo training — GRPO pending compute credits) training reward curve. x-axis = episode, y-axis = episode reward.*
+**Use case:** Production inference, score maximization
 
-### Before vs After Training
+---
 
-![Before vs After](grpo_before_after.png)
-*Figure: Dispatch score before and after training on the easy task (Q-Agent demo).*
+### PriorityAgent (`agents/priority_agent.py`)
+**Type:** LLM-powered with heuristic fallback
 
-### Baseline vs Trained Comparison
+Uses OpenAI-compatible API for structured decision-making:
+- Sends full observation to LLM
+- LLM returns dispatch decisions in structured format
+- Heuristic fallback if API fails or times out
 
-| Agent | Type | Avg Episode Reward |
-|-------|------|--------------------|
+**Use case:** LLM-based baselines, exploring LLM-as-agent approaches
 
-| `RandomAgent` | Random baseline | ~0–5 |
-| `DQNAgent` (final) | Trained | Improves over 500 episodes |
-| `RepositioningOracle` | Oracle upper bound | Best |
+---
 
-The `RandomAgent` (in `evaluation/auto_evaluator.py`) provides a reproducible lower-bound baseline. Run a direct comparison:
+### AmbulanceQAgent (`agents/fleet_agent.py`)
+**Type:** DQN-based RL agent for MARL
+
+Per-ambulance independent DQN:
+- State encoding: 8 dims (own state) + 2×(n-1) (fleet summary) + 2 (oversight) + 5 (global)
+- Epsilon-greedy with action masking
+- Double DQN updates with soft target network
+
+**Use case:** Multi-agent RL training
+
+---
+
+### OversightAgent (`agents/oversight_agent.py`)
+**Type:** Fleet coordinator (non-decision maker)
+
+Detects and signals coordination conflicts:
+- Identifies when multiple agents target same emergency
+- Emits per-agent coordination signals [conflict_flag, conflict_amb_norm]
+- Maintains conflict history for dashboard
+
+**Use case:** MARL coordination, conflict detection
+
+---
+
+## 🧠 RL Training Infrastructure
+
+Located in `rl/` directory — complete Dueling DQN implementation:
+
+### Core Modules
+
+| File | Purpose |
+|------|---------|
+| `rl/dqn.py` | Dueling DQN network architecture (value + advantage streams) |
+| `rl/rl_agent.py` | Training loop with soft target updates, Double DQN |
+| `rl/state_encoder.py` | 120-dimensional state encoding from observations |
+| `rl/action_mapper.py` | Maps discrete DQN outputs to structured actions |
+| `rl/action_mask.py` | Masks invalid actions (busy ambulances, etc.) |
+| `rl/replay_buffer.py` | Standard uniform replay buffer |
+| `rl/prioritized_replay_buffer.py` | PER (Prioritized Experience Replay) |
+| `rl/rubric.py` | RFC 004 Rubric integration for reward shaping |
+| `rl/demand_predictor.py` | Hotspot prediction for proactive staging |
+
+### State Encoding (120 dimensions)
 
 ```python
-from env.environment import AmbulanceEnvironment
-from evaluation.auto_evaluator import AutoEvaluator, RandomAgent
-from agents.repositioning_oracle import RepositioningOracle
+# Ambulances: 6 max × (node + state_onehot(6) + eta) = 48 dims
+# Emergencies: 10 max × (node + severity_oh(3) + time + assigned) = 60 dims
+# Hospitals: 4 max × (node + capacity + patients + ratio) = 16 dims
+# Total: 124 → clipped to 120
+```
 
-evaluator = AutoEvaluator(
-    env_class=AmbulanceEnvironment,
-    baseline_agent=RandomAgent(),
-    advanced_agent=RepositioningOracle(),
-)
-result = evaluator.evaluate({"n_ambulances": 2, "n_hospitals": 2, "max_steps": 30, "seed": 42})
-print(result)
+### Training Features
+
+- **Dueling DQN**: Separate value and advantage streams
+- **Double DQN**: Reduce overestimation bias
+- **Soft Target Update**: τ=0.005 for smooth target network updates
+- **Prioritized Replay**: α=0.6, β anneals to 1.0
+- **Reward Normalization**: Optional z-score normalization
+- **Action Masking**: Only valid actions considered
+
+### Running Training
+
+```bash
+# Standard single-agent training
+python train.py --episodes 500
+
+# Multi-agent RL (one DQN per ambulance)
+python train.py --marl --episodes 1000
+
+# Long-horizon (500-step episodes with demand surges)
+python train.py --long-horizon --episodes 500
+
+# With self-improvement loop
+python train.py --self-play --selfplay-interval 200
+
+# Disable enhancements
+python train.py --no-dueling --no-per --no-soft-update
 ```
 
 ---
 
-## 📜 RFC Compliance
+## 🔄 Multi-Agent RL
 
-| RFC | Feature | Endpoint | Status |
-|-----|---------|----------|--------|
-| 001 | Base Env API | `/env/reset`, `/env/step`, `/env/state` | ✅ Implemented |
-| 002 | Auto-Discovery | `GET /tools` | ✅ Pydantic JSON Schemas |
-| 003 | MCP Protocol | `GET /mcp` | ✅ Model Context Protocol |
-| 004 | Named Rubric | 9 components in every observation | ✅ Full Rubric |
-| 005 | Concurrent Sessions | `SUPPORTS_CONCURRENT_SESSIONS = True` | ✅ Session-Isolated |
+Located in `multi_agent/` — fleet coordination system:
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   MultiAgentCoordinator                      │
+│                                                              │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
+│  │ AmbulanceQ  │  │ AmbulanceQ  │  │ AmbulanceQ  │  ...    │
+│  │ Agent #0    │  │ Agent #1    │  │ Agent #2    │         │
+│  │ (independent│  │ (independent│  │ (independent│         │
+│  │  DQN)       │  │  DQN)       │  │  DQN)       │         │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘         │
+│         │                │                │                │
+│         └────────────────┼────────────────┘                │
+│                          │                                 │
+│         ┌────────────────▼────────────────┐                │
+│         │       OversightAgent            │                │
+│         │  (conflict detection & signals) │                │
+│         └─────────────────────────────────┘                │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Key Features
+
+1. **Independent Agents**: Each ambulance has its own DQN
+2. **Global Reward Splitting**: `global_reward / n_agents` per step
+3. **Conflict Detection**: −5 penalty if multiple agents target same emergency
+4. **Coordination Signals**: 2-dim vector per agent [conflict_flag, partner_id]
+
+### Running MARL
+
+```bash
+python train_marl.py
+# or
+python train.py --marl
+```
+
+---
+
+## ⏱️ Long-Horizon Planning
+
+Located in `long_horizon/` — extended episodes with curriculum:
+
+### Features
+
+- **500-step episodes** (vs. 30/60/100 in standard tasks)
+- **Demand surges**: Periodic spikes in emergency arrival rate
+- **Curriculum learning**: Gradually increase difficulty
+- **History encoding**: LSTM-based encoder for temporal patterns
+
+### Curriculum Stages
+
+1. **Stage 1**: Low arrival rate, no traffic
+2. **Stage 2**: Medium arrival rate, mild traffic
+3. **Stage 3**: High arrival rate, full traffic + incidents
+4. **Stage 4**: Demand surges during rush hours
+
+### Modules
+
+| File | Purpose |
+|------|---------|
+| `long_horizon_env.py` | Extended environment with surge logic |
+| `curriculum_manager.py` | Stage progression based on performance |
+| `episode_planner.py` | Macro-level planning across episode |
+| `history_encoder.py` | LSTM encoding of observation history |
+
+### Running Long-Horizon Training
+
+```bash
+python train_curriculum.py
+# or
+python train.py --long-horizon
+```
+
+---
+
+## 🎭 Self-Improvement Loop
+
+Located in `self_improvement/` — autonomous agent improvement:
+
+### The Loop
+
+```
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│   Training   │───▶│  Weakness    │───▶│  Adversarial │
+│   Episodes   │    │  Detection   │    │  Scenario    │
+└──────────────┘    └──────────────┘    │  Generation  │
+     ▲                                  └──────┬───────┘
+     │                                         │
+     └─────────────────────────────────────────┘
+              (train on hard scenarios)
+```
+
+### Components
+
+| File | Purpose |
+|------|---------|
+| `weakness_detector.py` | Identifies underperforming scenarios |
+| `adversarial_generator.py` | Creates challenging scenarios |
+| `self_play_trainer.py` | Training loop with self-play |
+| `expert_agent.py` | Reference oracle for comparison |
+| `performance_analyzer.py` | Metrics tracking and analysis |
+
+### Adversarial Scenarios
+
+The generator creates challenging conditions:
+- **Clustered emergencies**: Multiple emergencies at nearby nodes
+- **Low resource scenarios**: Few ambulances, many emergencies
+- **Traffic nightmares**: High multipliers + incidents on critical edges
+- **Hospital overload**: Simultaneous arrivals exceeding capacity
+
+### Running Self-Play
+
+```bash
+python train_selfplay.py
+# or
+python train.py --self-play --selfplay-interval 200
+```
 
 ---
 
 ## 🔌 API Endpoints
 
+### Core OpenEnv (RFC 001)
+
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/health` | Health check — returns `{"status": "ok"}` |
 | `POST` | `/env/reset` | Reset environment, returns initial observation |
 | `POST` | `/env/step` | Submit action, returns next observation |
 | `GET` | `/env/state` | Get current environment state |
-| `GET` | `/tools` | RFC 002 — auto-discovery with JSON schemas |
+
+### RFC Extensions
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/tools` | RFC 002 — Auto-discovery with JSON schemas |
 | `GET` | `/mcp` | RFC 003 — Model Context Protocol metadata |
-| `GET` | `/episodes` | List completed episode history |
-| `WS` | `/ws/live` | WebSocket — real-time state updates at 2 Hz |
+| `GET` | `/health` | Health check — returns `{"status": "ok"}` |
+| `WS` | `/ws/live` | WebSocket — real-time state at 2 Hz |
+
+### Multi-Agent Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/marl/status` | Fleet coordination statistics |
+| `GET` | `/marl/conflicts` | Recent conflict events |
+
+### Long-Horizon Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/curriculum/status` | Current training stage |
+| `GET` | `/curriculum/progress` | Stage completion metrics |
+
+### Self-Improvement Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/selfplay/weaknesses` | Detected weakness report |
+| `GET` | `/selfplay/iterations` | Improvement history |
+| `POST` | `/selfplay/adversarial` | Generate custom adversarial scenario |
+
+### Dashboard Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/dashboard/reset` | Reset with oracle auto-play |
+| `POST` | `/dashboard/step` | Step with oracle dispatch |
+| `GET` | `/dashboard/metrics` | Current episode metrics |
+| `GET` | `/score` | Run all tasks, return scores |
 
 ---
 
-## 📺 Dashboard & Visualisation
+## 📺 Dashboard & Visualization
 
-A real-time **Next.js 14** dashboard with dark-mode UI:
+### Next.js 14 Dashboard (`frontend/`)
 
-- **Live City Map** — Hexagonal hub-and-spoke layout with ambulance positions and emergency markers
-- **Dispatch Queue** — Prioritised incident list with severity badges and expiration countdowns
-- **Reward Chart** — Realtime reward trajectory with per-component breakdown
-- **Ambulance Table** — Fleet status with FSM state, ETA, and assignment details
-- **Hospital Panel** — Capacity bars and specialty labels per hospital
+Real-time dark-mode UI with multiple views:
 
-Built with **Tailwind CSS**, **Chart.js**, and optimised for a cinematic situational-awareness experience.
+**Views:**
+1. **LIVE** — Real-time city map, dispatch queue, ambulance status
+2. **MULTI-AGENT** — Per-agent DQN states, coordination signals
+3. **LONG-HORIZON** — Curriculum stage, episode progress
+4. **SELF-IMPROVE** — Weakness detection, adversarial scenarios
+
+**Components:**
+- `CityMap.jsx` — Hexagonal hub-and-spoke layout with animated ambulances
+- `AmbulanceTable.jsx` — Fleet status with FSM states and ETAs
+- `HospitalPanel.jsx` — Capacity bars and specialty labels
+- `RewardChart.jsx` — Real-time reward trajectory with rubric breakdown
+- `MultiAgentView.jsx` — MARL coordination visualization
+- `LongHorizonView.jsx` — Curriculum progress
+- `SelfImprovementView.jsx` — Self-play metrics
+
+**Running the Dashboard:**
+
+```bash
+cd frontend
+npm install
+npm run dev      # Development (port 3000)
+npm run build    # Production build (to dist/)
+```
+
+The FastAPI server automatically serves the built dashboard at `/dashboard`.
 
 ---
 
@@ -617,8 +871,8 @@ Built with **Tailwind CSS**, **Chart.js**, and optimised for a cinematic situati
 ### Prerequisites
 
 - **Python 3.11+**
-- **Node.js 18+** (for the Next.js dashboard, optional)
-- **Docker** (for containerised deployment, optional)
+- **Node.js 18+** (for dashboard, optional)
+- **Docker** (optional, for deployment)
 
 ### Installation
 
@@ -627,25 +881,25 @@ Built with **Tailwind CSS**, **Chart.js**, and optimised for a cinematic situati
 git clone https://github.com/CSNEHA20/Meta_PyTorch_OpenEnv_Hackathon.git
 cd Meta_PyTorch_OpenEnv_Hackathon
 
-# 2. Create and activate virtual environment
+# 2. Create virtual environment
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-# 3. Install Python dependencies
+# 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Copy the example env file and add your API credentials
+# 4. Copy environment template
 cp .env.example .env
-# Edit .env and set HF_TOKEN, API_BASE_URL, MODEL_NAME
+# Edit .env and add: HF_TOKEN, API_BASE_URL, MODEL_NAME
 ```
 
-### Running Inference
+### Running Inference (Production Agent)
 
 ```bash
-# Run all three tasks (emits [START]/[STEP]/[END] logs to stdout)
+# Run all three tasks (outputs [START]/[STEP]/[END] logs)
 python inference.py
 
-# Run a specific task
+# Run specific task
 python inference.py --task easy
 python inference.py --task medium
 python inference.py --task hard
@@ -654,14 +908,33 @@ python inference.py --task hard
 ### Running the Server
 
 ```bash
-# Development (with hot-reload)
+# Development (hot-reload)
 uvicorn server.app:app --host 0.0.0.0 --port 7860 --reload
 
 # Production (4 workers)
 uvicorn server.app:app --host 0.0.0.0 --port 7860 --workers 4
 ```
 
-Then open `http://localhost:7860/health` for health check.
+Test: `curl http://localhost:7860/health`
+
+### Running Training
+
+```bash
+# Basic DQN training (500 episodes)
+python train.py --episodes 500
+
+# Multi-agent RL
+python train.py --marl --episodes 1000
+
+# Long-horizon with curriculum
+python train.py --long-horizon
+
+# With self-improvement
+python train.py --self-play --selfplay-interval 200
+
+# Final training (comprehensive)
+python train_final.py
+```
 
 ### Running Tests
 
@@ -669,17 +942,17 @@ Then open `http://localhost:7860/health` for health check.
 python -m pytest tests/ -v
 ```
 
-All **58 tests** cover environment reset/step/state logic, all three graders, model validation, and edge cases.
+All **58 tests** cover environment logic, graders, and model validation.
 
 ### Docker Deployment
 
 ```bash
-# Build the image
+# Build
 docker build -t ambulance-openenv .
 
-# Run the container
+# Run
 docker run -p 7860:7860 \
-  -e HF_TOKEN=your_hf_token_here \
+  -e HF_TOKEN=your_token \
   -e API_BASE_URL=https://router.huggingface.co/v1 \
   -e MODEL_NAME=Qwen/Qwen2.5-72B-Instruct \
   ambulance-openenv
@@ -687,167 +960,184 @@ docker run -p 7860:7860 \
 
 ---
 
-## 🧠 DQN Training Pipeline
-
-The project includes a full **Dueling DQN** training infrastructure in `rl/`:
-
-| Module | Purpose |
-|--------|---------|
-| `rl/dqn.py` | Dueling DQN network architecture |
-| `rl/rl_agent.py` | Training loop with soft target updates |
-| `rl/prioritized_replay_buffer.py` | Prioritised Experience Replay (PER) |
-| `rl/replay_buffer.py` | Standard replay buffer |
-| `rl/state_encoder.py` | 120-dimensional state encoding |
-| `rl/action_mask.py` | Masks invalid actions (dispatching busy ambulances) |
-| `rl/action_mapper.py` | Maps discrete DQN outputs to environment actions |
-| `rl/demand_predictor.py` | Predicts future emergency arrivals for proactive staging |
-| `rl/rubric.py` | RFC 004 Rubric integration for reward shaping |
-
-```bash
-# Train the DQN agent
-python train.py
-
-# Evaluate a saved checkpoint
-python evaluate.py
-```
-
----
-
-## 📁 Project Structure
+## 📁 Complete Project Structure
 
 ```
-📦 Ambulance-OpenENV
-├── 📄 inference.py              # Baseline inference — [START]/[STEP]/[END] logs
-├── 📄 openenv.yaml              # OpenEnv specification metadata
-├── 📄 Dockerfile                # Docker build (port 7860, 4 workers)
-├── 📄 pyproject.toml            # Project config, dependencies, scripts
-├── 📄 requirements.txt          # Pip dependencies
-├── 📄 train.py                  # DQN training script
-├── 📄 evaluate.py               # Checkpoint evaluation
-├── 📄 demo.py                   # Interactive demo runner
-├── 📄 compare.py                # Agent comparison benchmarks
-├── 📄 verify_sim.py             # Simulation verification
+Ambulance-OpenENV/
 │
-├── 📂 env/                      # Core simulation engine
-│   ├── environment.py           #   AmbulanceEnvironment (main env class)
-│   ├── models.py                #   Pydantic models (Action, Observation, Rubric)
-│   └── simulator.py             #   Low-level simulation mechanics
+├── 📄 Configuration Files
+│   ├── openenv.yaml              # OpenEnv specification with tasks
+│   ├── pyproject.toml            # Python project config, dependencies
+│   ├── requirements.txt            # Pip dependencies
+│   ├── Dockerfile                # Container build instructions
+│   ├── .env.example              # Environment variable template
+│   └── .gitignore                # Git ignore patterns
 │
-├── 📂 server/                   # FastAPI server (REST + WebSocket)
-│   ├── app.py                   #   Server entry point (port 7860)
-│   └── ambulance_environment.py #   OpenEnv environment adapter
+├── 📄 Main Scripts
+│   ├── inference.py              # Production inference (uses RepositioningOracle)
+│   ├── train.py                  # Main training script (DQN, MARL, self-play)
+│   ├── train_final.py            # Comprehensive final training
+│   ├── train_curriculum.py       # Long-horizon curriculum training
+│   ├── train_marl.py             # Multi-agent RL training
+│   ├── train_selfplay.py         # Self-improvement training
+│   ├── train_grpo.py             # GRPO policy gradient training
+│   ├── evaluate.py               # Checkpoint evaluation
+│   ├── demo.py                   # Interactive demo
+│   ├── compare.py                # Agent comparison benchmarks
+│   └── app.py                    # Simple Gradio app entry
 │
-├── 📂 tasks/                    # Task configurations
-│   ├── easy.py                  #   2 ambulances, 30 steps, λ=0.3
-│   ├── medium.py                #   4 ambulances, 60 steps, λ=0.4
-│   └── hard.py                  #   6 ambulances, 100 steps, λ=0.6
+├── 📄 Grading Scripts
+│   ├── grader_easy.py            # Easy task grading (optimal/actual ratios)
+│   ├── grader_medium.py          # Medium task grading (served+response-idle)
+│   └── grader_hard.py            # Hard task grading (critical+fairness+penalty)
 │
-├── 📂 agents/                   # Dispatch agents
-│   ├── baseline.py              #   Minimal baseline agent
-│   ├── greedy_agent.py          #   Rule-based greedy dispatcher
-│   ├── priority_agent.py        #   LLM-powered priority agent
-│   └── oracle.py                #   Dijkstra-based optimal oracle
+├── 📂 env/                       # Core Simulation Engine
+│   ├── __init__.py
+│   ├── models.py                 # Pydantic models (Rubric, Action, Observation)
+│   ├── simulator.py              # CityGraph, AmbulanceFleet, TrafficEngine, etc.
+│   └── environment.py            # AmbulanceEnvironment main class
 │
-├── 📂 rl/                       # RL training infrastructure
-│   ├── dqn.py                   #   Dueling DQN network
-│   ├── rl_agent.py              #   Training loop
-│   ├── state_encoder.py         #   120-dim state encoding
-│   ├── action_mapper.py         #   Discrete → env action mapping
-│   ├── action_mask.py           #   Invalid action masking
-│   ├── replay_buffer.py         #   Standard replay buffer
-│   ├── prioritized_replay_buffer.py # PER buffer
-│   ├── demand_predictor.py      #   Demand forecasting
-│   └── rubric.py                #   RFC 004 rubric integration
+├── 📂 server/                    # FastAPI HTTP Server
+│   ├── __init__.py
+│   ├── ambulance_environment.py  # OpenEnv wrapper for core environment
+│   └── app.py                    # FastAPI application with all endpoints
 │
-├── 📂 grader_easy.py            # Easy grading formula (optimal/actual ratios)
-├── 📂 grader_medium.py          # Medium grading formula (served+response−idle)
-├── 📂 grader_hard.py            # Hard grading formula (critical+priority+fairness)
+├── 📂 agents/                    # Dispatch Agents
+│   ├── __init__.py
+│   ├── baseline.py               # Priority-sorted baseline
+│   ├── greedy_agent.py           # Simple nearest-first
+│   ├── oracle.py                 # Dijkstra-based optimal
+│   ├── repositioning_oracle.py   # Best agent: multi-dispatch + repositioning
+│   ├── priority_agent.py         # LLM-powered with fallback
+│   ├── fleet_agent.py            # DQN agent for MARL
+│   └── oversight_agent.py        # Conflict detection coordinator
 │
-├── 📂 tests/                    # pytest test suite (58 tests)
-│   ├── test_environment.py      #   Environment logic tests
-│   ├── test_graders.py          #   Grader correctness tests
-│   └── test_models.py           #   Pydantic model validation tests
+├── 📂 rl/                        # RL Training Infrastructure
+│   ├── dqn.py                    # Dueling DQN network
+│   ├── rl_agent.py               # DQNAgent training loop
+│   ├── state_encoder.py          # 120-dim state encoding
+│   ├── action_mapper.py          # Discrete → ActionModel mapping
+│   ├── action_mask.py            # Invalid action masking
+│   ├── replay_buffer.py          # Uniform replay buffer
+│   ├── prioritized_replay_buffer.py  # PER implementation
+│   ├── rubric.py                 # RFC 004 Rubric integration
+│   └── demand_predictor.py       # Hotspot prediction
 │
-├── 📂 frontend/                 # Next.js 14 dashboard
+├── 📂 multi_agent/               # Multi-Agent Coordination
+│   ├── ambulance_agent.py        # Individual ambulance agent wrapper
+│   ├── coordinator.py            # MultiAgentCoordinator (central controller)
+│   ├── dispatcher_agent.py       # Dispatch decision logic
+│   └── planner.py                # Route planning utilities
+│
+├── 📂 long_horizon/              # Long-Horizon & Curriculum
+│   ├── __init__.py
+│   ├── curriculum_manager.py     # Difficulty stage progression
+│   ├── episode_planner.py        # Macro-level planning
+│   ├── history_encoder.py        # LSTM temporal encoding
+│   └── long_horizon_env.py       # Extended 500-step environment
+│
+├── 📂 self_improvement/          # Self-Play & Adversarial Training
+│   ├── __init__.py
+│   ├── adversarial_generator.py  # Creates challenging scenarios
+│   ├── expert_agent.py           # Reference oracle agent
+│   ├── performance_analyzer.py   # Metrics tracking
+│   ├── self_play_trainer.py      # Self-play training loop
+│   ├── strategy_adapter.py       # Strategy adjustment
+│   └── weakness_detector.py      # Identifies failure patterns
+│
+├── 📂 tasks/                     # Task Configurations
+│   ├── __init__.py
+│   ├── configs.py                # Unified config classes
+│   ├── easy.py                   # Easy task config (2 amb, 30 steps)
+│   ├── medium.py                 # Medium task config (4 amb, 60 steps)
+│   ├── hard.py                   # Hard task config (6 amb, 100 steps)
+│   └── graders.py                # Task graders interface
+│
+├── 📂 evaluation/                # Evaluation Framework
+│   ├── __init__.py
+│   ├── auto_evaluator.py         # Automated baseline vs advanced comparison
+│   └── report.py                 # Report generation utilities
+│
+├── 📂 tests/                     # Test Suite (58 tests)
+│   ├── __init__.py
+│   ├── test_environment.py       # Environment logic tests
+│   ├── test_graders.py           # Grader correctness tests
+│   ├── test_models.py            # Pydantic model tests
+│   └── test_action_reduction.py  # Action space pruning tests
+│
+├── 📂 utils/                     # Utilities
+│   └── logger.py                 # Structured logging
+│
+├── 📂 frontend/                  # Next.js 14 Dashboard
 │   ├── app/
-│   │   ├── page.js              #   Main dashboard page
-│   │   ├── layout.js            #   Root layout
-│   │   └── components/
-│   │       ├── CityMap.jsx      #   Real-time city visualisation
-│   │       ├── AmbulanceTable.jsx  # Fleet status table
-│   │       ├── HospitalPanel.jsx   # Hospital capacity panel
-│   │       └── RewardChart.jsx     # Reward trajectory chart
+│   │   ├── components/
+│   │   │   ├── AmbulanceTable.jsx
+│   │   │   ├── CityMap.jsx
+│   │   │   ├── HospitalPanel.jsx
+│   │   │   ├── LongHorizonView.jsx
+│   │   │   ├── MultiAgentView.jsx
+│   │   │   ├── RewardChart.jsx
+│   │   │   └── SelfImprovementView.jsx
+│   │   ├── globals.css
+│   │   ├── layout.js
+│   │   └── page.js               # Main dashboard
+│   ├── public/
+│   ├── next.config.js
+│   ├── package.json
+│   ├── postcss.config.js
 │   └── tailwind.config.js
 │
-└── 📂 utils/
-    └── logger.py                # Structured logging utilities
+├── 📂 notebooks/                 # Jupyter Notebooks
+│   ├── grpo_colab.ipynb          # GRPO training (Google Colab)
+│   ├── trl_colab_minimal.ipynb   # TRL minimal example
+│   └── run_analysis.py           # Notebook utilities
+│
+├── 📂 outputs/                   # Training Outputs
+│   └── final/
+│       └── reward_curve.png
+│
+└── 📄 Documentation
+    ├── README.md                 # This file
+    ├── PROJECT_DOCUMENTATION.md  # Detailed technical reference
+    ├── colab_notebook.ipynb      # Colab training notebook
+    └── colab_train.py            # Colab training script
 ```
 
 ---
 
-## 🔐 Environment Variables
+## 🛠️ Tech Stack
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `HF_TOKEN` | **Yes** | — | HuggingFace API token for LLM inference |
-| `API_BASE_URL` | No | `https://router.huggingface.co/v1` | OpenAI-compatible API endpoint |
-| `MODEL_NAME` | No | `Qwen/Qwen2.5-72B-Instruct` | LLM model identifier |
-
-> **Note:** Never commit your `.env` file or tokens to version control. Use `.env.example` as a template.
-
----
-
-## 🛠 Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| **Language** | Python 3.11 |
-| **Framework** | FastAPI + Uvicorn |
-| **Env Standard** | OpenEnv (`openenv-core >= 0.2.0`) |
-| **Graph Engine** | NetworkX (Barabási-Albert) |
-| **Numerics** | NumPy (deterministic `default_rng`) |
-| **Validation** | Pydantic v2 (`extra='forbid'`) |
-| **LLM Client** | OpenAI Python SDK |
-| **RL Framework** | PyTorch (Dueling DQN) |
-| **Frontend** | Next.js 14 + Tailwind CSS + Chart.js |
-| **Testing** | pytest + pytest-asyncio + httpx |
-| **Container** | Docker (`python:3.11-slim`) |
-| **Deployment** | HuggingFace Spaces (Docker SDK) |
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Language** | Python 3.11 | Core implementation |
+| **Web Framework** | FastAPI 0.110+ | HTTP API + WebSocket |
+| **Server** | Uvicorn | ASGI server |
+| **Env Standard** | openenv-core ≥0.2.0 | OpenEnv compliance |
+| **Graph Engine** | NetworkX 3.2+ | City graph + shortest paths |
+| **Numerics** | NumPy 1.26+ | Arrays, RNG, computation |
+| **Validation** | Pydantic v2 | Type-safe models |
+| **RL Framework** | PyTorch 2.0+ | DQN training |
+| **LLM Client** | OpenAI SDK | LLM-powered agents |
+| **Testing** | pytest + pytest-asyncio | Test suite |
+| **Frontend** | Next.js 14 + Tailwind CSS | Dashboard |
+| **Charts** | Chart.js | Reward visualization |
+| **HTTP Client** | httpx | Async API calls |
+| **Deployment** | Docker | Containerization |
 
 ---
 
-## ☁️ Deployment
+## 👥 Team
 
-### HuggingFace Spaces
-
-The environment is deployed as a Docker-based HuggingFace Space:
-
-🔗 **Live:** [huggingface.co/spaces/vishallakshmikanthan/Ambulance-OpenENV](https://huggingface.co/spaces/vishallakshmikanthan/Ambulance-OpenENV)
-
-The Space is tagged with `openenv` for automatic discovery by the hackathon evaluator.
-
-### GitHub Repositories
-
-| Repository | Link |
-|-----------|------|
-| **Team Repository** | [github.com/CSNEHA20/Meta_PyTorch_OpenEnv_Hackathon](https://github.com/CSNEHA20/Meta_PyTorch_OpenEnv_Hackathon) |
-| **Mirror** | [github.com/Vishallakshmikanthan/Ambulance-Despatch-RL-Model](https://github.com/Vishallakshmikanthan/Ambulance-Despatch-RL-Model) |
+| Name | Role | GitHub |
+|------|------|--------|
+| **SNEHA C** | Team Lead | [@CSNEHA20](https://github.com/CSNEHA20) |
+| **Vishal Lakshmikanthan** | Member | [@Vishallakshmikanthan](https://github.com/Vishallakshmikanthan) |
 
 ---
 
-## 🔮 Future Improvements
+## 📜 License
 
-- **Real-World Topographies** — Integration of OpenStreetMap data for city-specific simulations
-- **Multi-Agent Coordination** — Decentralised agent cooperation instead of centralised dispatch
-- **PPO Training** — Proximal Policy Optimisation using the dense RFC 004 reward signal
-- **Transfer Learning** — Pre-train on easy, fine-tune on hard for faster convergence
-- **Live A/B Testing** — Compare RL agent vs. greedy baseline in real-time via the dashboard
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
@@ -855,6 +1145,6 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 **Built with ❤️ for the Scaler × Meta × HuggingFace × PyTorch OpenEnv Hackathon**
 
-*Saving lives, one dispatch at a time.*
+🚑 [Live Demo](https://huggingface.co/spaces/vishallakshmikanthan/Ambulance-OpenENV) · 📊 [HuggingFace Space](https://huggingface.co/spaces/vishallakshmikanthan/Ambulance-OpenENV) · 🐙 [GitHub](https://github.com/CSNEHA20/Meta_PyTorch_OpenEnv_Hackathon)
 
 </div>
