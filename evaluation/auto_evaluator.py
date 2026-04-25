@@ -1,6 +1,18 @@
 from __future__ import annotations
 
+import random
 from typing import Any, Dict
+
+
+class RandomAgent:
+    """Minimal random-action baseline for comparison in AutoEvaluator."""
+
+    def act(self, obs):
+        return {
+            "ambulance_id": random.randint(0, 1),
+            "emergency_id": "E1",
+            "hospital_id": random.randint(0, 1),
+        }
 
 
 class AutoEvaluator:

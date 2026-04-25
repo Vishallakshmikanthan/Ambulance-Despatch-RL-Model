@@ -1,8 +1,17 @@
+from __future__ import annotations
+
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+
 from multi_agent.dispatcher_agent import DispatcherAgent
 from multi_agent.ambulance_agent import AmbulanceAgent
 from multi_agent.planner import LookaheadPlanner
 from self_improvement.performance_analyzer import PerformanceAnalyzer
 from self_improvement.strategy_adapter import StrategyAdapter
+from agents.fleet_agent import AmbulanceQAgent
+from rl.action_mapper import ActionMapper
+from rl.action_mask import ActionMask
 from env.models import ActionModel, ObservationModel, AmbulanceState, Severity
 
 _SEVERITY_RANK = {
@@ -13,16 +22,48 @@ _SEVERITY_RANK = {
 
 _ADAPTATION_INTERVAL = 10
 
+# Penalty applied to each conflicting agent when two agents target the same emergency
+_CONFLICT_PENALTY = 5.0
+
 
 class MultiAgentCoordinator:
     """
-    Master controller that orchestrates the multi-agent pipeline:
-    1. Dispatcher selects ambulance + emergency
-    2. Ambulance agent selects hospital
-    3. Returns final ActionModel
+    Multi-agent coordinator.
+
+    Each ambulance is controlled by an independent AmbulanceQAgent that selects
+    actions from a shared discrete action space (emergency slots + noop).
+    The coordinator:
+      1. Builds a per-step action space from the current observation.
+      2. Lets each agent independently select an action.
+      3. Detects conflicts (two agents dispatching to the same emergency) and
+         applies a conflict penalty (Step 7.4).
+      4. Splits the global environment reward equally among all agents (Step 7.3).
+      5. Stores transitions and triggers individual learning steps.
+
+    The original heuristic pipeline (DispatcherAgent / LookaheadPlanner) is
+    preserved for the legacy ``act()`` single-action interface used by the
+    existing server and evaluation scripts.
     """
 
-    def __init__(self):
+    # ------------------------------------------------------------------ #
+    #  Construction                                                        #
+    # ------------------------------------------------------------------ #
+
+    def __init__(self, n_ambulances: int = 2, action_size: int = 11):
+        self.n_ambulances = n_ambulances
+        self.action_size = action_size
+
+        # Independent Q-agents — one per ambulance (Step 7.2)
+        self.fleet_agents: Dict[int, AmbulanceQAgent] = {
+            i: AmbulanceQAgent(agent_id=i, n_agents=n_ambulances, action_size=action_size)
+            for i in range(n_ambulances)
+        }
+
+        # Shared action mapper / mask builder
+        self.mapper = ActionMapper()
+        self.mask_builder = ActionMask()
+
+        # Legacy heuristic pipeline (kept for backward-compat)
         self.dispatcher = DispatcherAgent()
         self.ambulance_agent = AmbulanceAgent()
         self.planner = LookaheadPlanner(horizon=3)
@@ -30,10 +71,21 @@ class MultiAgentCoordinator:
         self.adapter = StrategyAdapter()
         self._step_count = 0
 
+        # Per-agent transition buffers (populated by marl_act, consumed by marl_learn)
+        self._last_states: Dict[int, np.ndarray] = {}
+        self._last_actions: Dict[int, int] = {}
+        self.conflicts = 0
+
+    # ------------------------------------------------------------------ #
+    #  Episode management                                                  #
+    # ------------------------------------------------------------------ #
+
     def reset(self):
-        """Clear analyzer history at episode reset."""
+        """Clear per-episode state."""
         self.analyzer.reset()
         self._step_count = 0
+        self._last_states.clear()
+        self._last_actions.clear()
 
     def record_step(self, reward, info):
         """Record a completed env step and periodically adapt strategy."""
@@ -42,6 +94,102 @@ class MultiAgentCoordinator:
         if self._step_count % _ADAPTATION_INTERVAL == 0:
             metrics = self.analyzer.get_metrics()
             self.adapter.update(metrics)
+
+    # ------------------------------------------------------------------ #
+    #  Multi-agent RL interface (Steps 7.2 – 7.4)                        #
+    # ------------------------------------------------------------------ #
+
+    def marl_act(self, observation: ObservationModel) -> Dict[int, int]:
+        """
+        Each fleet agent independently selects an action index.
+
+        Returns
+        -------
+        actions : dict mapping agent_id -> action_index
+        """
+        self.mapper.build_action_space(observation)
+        mask = self.mask_builder.build_mask(self.mapper)
+
+        actions: Dict[int, int] = {}
+        for agent_id, agent in self.fleet_agents.items():
+            state = agent.encode_observation(observation)
+            action_idx = agent.act(state, mask)
+            actions[agent_id] = action_idx
+            self._last_states[agent_id] = state
+            self._last_actions[agent_id] = action_idx
+
+        return actions
+
+    def marl_learn(
+        self,
+        global_reward: float,
+        next_observation: ObservationModel,
+        done: bool,
+    ) -> Dict[int, float]:
+        """
+        Distribute rewards and trigger per-agent learning.
+
+        Step 7.3 — team reward split: reward_i = global_reward / n_agents
+        Step 7.4 — conflict penalty: if agents chose the same emergency, each
+                   conflicting agent receives an additional –5 penalty.
+
+        Returns
+        -------
+        agent_rewards : dict mapping agent_id -> reward used for learning
+        """
+        n = max(len(self.fleet_agents), 1)
+        base_reward = global_reward / n
+
+        # Detect conflicts (multiple agents targeting the same non-noop emergency)
+        action_to_agents: Dict[int, List[int]] = {}
+        for agent_id, action_idx in self._last_actions.items():
+            action_to_agents.setdefault(action_idx, []).append(agent_id)
+
+        conflicting_agents = set()
+        # action_idx == 0 is typically noop — exclude it from conflict detection
+        for action_idx, agents_list in action_to_agents.items():
+            if action_idx != 0 and len(agents_list) > 1:
+                conflicting_agents.update(agents_list)
+
+        if conflicting_agents:
+            self.conflicts += 1
+            print(f"[CONFLICT DETECTED] Total: {self.conflicts}")
+
+        self.mapper.build_action_space(next_observation)
+        mask = self.mask_builder.build_mask(self.mapper)
+        agent_rewards: Dict[int, float] = {}
+
+        for agent_id, agent in self.fleet_agents.items():
+            reward_i = base_reward
+            if agent_id in conflicting_agents:
+                reward_i -= _CONFLICT_PENALTY
+
+            next_state = agent.encode_observation(next_observation)
+            agent.remember(
+                self._last_states[agent_id],
+                self._last_actions[agent_id],
+                reward_i,
+                next_state,
+                done,
+            )
+            agent.train_step()
+            agent_rewards[agent_id] = reward_i
+
+        return agent_rewards
+
+    def decode_actions(self, actions: Dict[int, int]) -> Dict[int, ActionModel]:
+        """Convert agent action indices to ActionModel objects."""
+        decoded: Dict[int, ActionModel] = {}
+        for agent_id, idx in actions.items():
+            try:
+                decoded[agent_id] = self.mapper.decode(idx)
+            except Exception:
+                decoded[agent_id] = ActionModel(is_noop=True)
+        return decoded
+
+    # ------------------------------------------------------------------ #
+    #  Legacy single-action interface (unchanged)                         #
+    # ------------------------------------------------------------------ #
 
     def _build_candidates(self, observation: ObservationModel) -> list:
         """Generate 2–3 candidate ActionModels for lookahead evaluation."""

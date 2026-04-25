@@ -6,10 +6,20 @@ import CityMap from './components/CityMap'
 import AmbulanceTable from './components/AmbulanceTable'
 import RewardChart from './components/RewardChart'
 import HospitalPanel from './components/HospitalPanel'
+import MultiAgentView from './components/MultiAgentView'
+import LongHorizonView from './components/LongHorizonView'
+import SelfImprovementView from './components/SelfImprovementView'
 
 const TASKS = ['easy', 'medium', 'hard']
 const TASK_STEPS = { easy: 30, medium: 60, hard: 100 }
 const TASK_COLOR = { easy: '#10b981', medium: '#f59e0b', hard: '#ef4444' }
+
+const VIEWS = [
+  { id: 'live',           label: 'LIVE',           icon: '◉' },
+  { id: 'multi-agent',    label: 'MULTI-AGENT',    icon: '⬡' },
+  { id: 'long-horizon',   label: 'LONG-HORIZON',   icon: '⧖' },
+  { id: 'self-improve',   label: 'SELF-IMPROVE',   icon: '↻' },
+]
 
 const emptyObs = {
   ambulances: [], emergencies: [], hospitals: [],
@@ -52,24 +62,31 @@ function StatusDot({ status }) {
 }
 
 export default function Dashboard() {
-  const [task, setTask] = useState('easy')
+  const [activeView, setActiveView] = useState('live')
+  const [task, setTask] = useState('hard')
   const [obs, setObs] = useState(emptyObs)
   const [rewardHistory, setRewardHistory] = useState([])
   const [episodeScore, setEpisodeScore] = useState(0)
   const [running, setRunning] = useState(false)
   const [autoRun, setAutoRun] = useState(false)
-  const [speed, setSpeed] = useState(300)
+  const [speed, setSpeed] = useState(500)
   const [status, setStatus] = useState('OFFLINE')
   const [metrics, setMetrics] = useState({})
   const autoRef = useRef(false)
   const speedRef = useRef(300)
+  const stepRef = useRef(null)
 
   useEffect(() => { autoRef.current = autoRun }, [autoRun])
   useEffect(() => { speedRef.current = speed }, [speed])
 
-  // Auto-connect on first load
+  // Auto-connect and auto-run on first load
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { resetEnv() }, [])
+  useEffect(() => {
+    resetEnv().then(() => {
+      // Small delay then start auto-run for instant impressive demo
+      setTimeout(() => setAutoRun(true), 1000)
+    })
+  }, [])
 
   const resetEnv = useCallback(async () => {
     setStatus('INITIALIZING...')
@@ -105,16 +122,19 @@ export default function Dashboard() {
     setRunning(false)
   }, [running])
 
+  useEffect(() => { stepRef.current = stepEnv }, [stepEnv])
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!autoRun) return
     const tick = async () => {
       if (!autoRef.current) return
-      await stepEnv()
+      await stepRef.current()
       if (autoRef.current) setTimeout(tick, speedRef.current)
     }
     const t = setTimeout(tick, speedRef.current)
     return () => clearTimeout(t)
-  }, [autoRun, stepEnv])
+  }, [autoRun])
 
   const maxSteps = TASK_STEPS[task]
   const progress = Math.min((obs.step / maxSteps) * 100, 100)
@@ -143,7 +163,21 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Task Selector */}
+        {/* View Switcher */}
+        <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          {VIEWS.map(v => (
+            <button key={v.id} onClick={() => setActiveView(v.id)}
+              className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all duration-200 flex items-center gap-1"
+              style={activeView === v.id
+                ? { background: '#3b82f6', color: '#fff', boxShadow: '0 0 16px rgba(59,130,246,0.5)' }
+                : { color: 'rgba(148,163,184,0.6)' }}>
+              <span>{v.icon}</span><span>{v.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Task Selector (only shown in live view) */}
+        {activeView === 'live' && (
         <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
           {TASKS.map(t => (
             <button key={t} onClick={() => setTask(t)}
@@ -155,6 +189,7 @@ export default function Dashboard() {
             </button>
           ))}
         </div>
+        )}
 
         {/* Controls */}
         <div className="flex items-center gap-4">
@@ -202,6 +237,16 @@ export default function Dashboard() {
       </div>
 
       {/* ─── MAIN LAYOUT ─────────────────────────────────────────── */}
+      {activeView === 'multi-agent' && (
+        <div className="flex flex-1 overflow-hidden"><MultiAgentView /></div>
+      )}
+      {activeView === 'long-horizon' && (
+        <div className="flex flex-1 overflow-hidden"><LongHorizonView /></div>
+      )}
+      {activeView === 'self-improve' && (
+        <div className="flex flex-1 overflow-hidden"><SelfImprovementView /></div>
+      )}
+      {activeView === 'live' && (
       <div className="flex flex-1 overflow-hidden">
 
         {/* ── LEFT SIDEBAR ─────────────────────────────────── */}
@@ -346,6 +391,7 @@ export default function Dashboard() {
           </div>
         </aside>
       </div>
+      )}
     </div>
   )
 }

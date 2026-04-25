@@ -145,7 +145,8 @@ _TASK_CONFIGS = {
 }
 
 _dash_env: Optional[_RawEnv] = None
-_dash_agent = GreedyAgent()
+_dash_agent = GreedyAgent()        # fallback for manual actions
+_dash_repo_oracle = None           # lazy-bound after reset
 _dash_last_obs: Optional[ObservationModel] = None
 _current_trajectory: list = []
 _current_episode_id: str = ""
@@ -153,7 +154,7 @@ _current_episode_id: str = ""
 
 @app.post("/env/reset", tags=["Dashboard"])
 async def dashboard_reset(body: dict = Body(default={})):
-    global _dash_env, _dash_last_obs, _current_trajectory, _current_episode_id
+    global _dash_env, _dash_last_obs, _current_trajectory, _current_episode_id, _dash_repo_oracle
     task_name = (body.get("task_name") or "easy").lower()
     cfg = _TASK_CONFIGS.get(task_name, EasyConfig)().to_dict()
     _dash_env = _RawEnv(cfg)
@@ -161,6 +162,9 @@ async def dashboard_reset(body: dict = Body(default={})):
     _dash_last_obs = obs
     _current_episode_id = _dash_env.episode_id
     _current_trajectory = []
+    from agents.repositioning_oracle import RepositioningOracle
+    enable_repos = task_name != "medium"
+    _dash_repo_oracle = RepositioningOracle(enable_reposition=enable_repos).bind_env(_dash_env)
     return obs.model_dump()
 
 
@@ -173,23 +177,26 @@ async def dashboard_step(body: dict = Body(default={})):
     if _dash_last_obs is not None and getattr(_dash_last_obs, 'done', False):
         return _dash_last_obs.model_dump() if hasattr(_dash_last_obs, 'model_dump') else _dash_last_obs
 
-    # Use request body action if provided, otherwise use greedy agent
+    # Use request body action if provided, otherwise use RepositioningOracle
     action_body = body.get("action") if body else None
     if action_body and isinstance(action_body, dict) and not action_body.get("is_noop", True):
         try:
             action = ActionModel(**action_body)
+            obs = _dash_env.step(action)
         except Exception:
-            action = _dash_agent.act(_dash_last_obs or _dash_env._get_observation())
+            actions = _dash_repo_oracle.act_all_with_reposition(_dash_last_obs) if _dash_repo_oracle else [_dash_agent.act(_dash_last_obs or _dash_env._get_observation())]
+            obs = _dash_env.step_all(actions) if _dash_repo_oracle else _dash_env.step(actions[0])
+    elif _dash_repo_oracle and _dash_last_obs:
+        actions = _dash_repo_oracle.act_all_with_reposition(_dash_last_obs)
+        obs = _dash_env.step_all(actions)
     else:
-        action = _dash_agent.act(_dash_last_obs or _dash_env._get_observation())
+        obs = _dash_env.step(_dash_agent.act(_dash_last_obs or _dash_env._get_observation()))
 
-    obs = _dash_env.step(action)
     _dash_last_obs = obs
 
     # Store step in trajectory
     _current_trajectory.append({
         "step": _dash_env.step_count,
-        "action": action.model_dump(),
         "obs": obs.model_dump(),
         "reward": obs.reward,
         "done": obs.done,
@@ -220,6 +227,273 @@ async def dashboard_state():
     if _dash_env is None:
         raise HTTPException(status_code=400, detail="Call /env/reset first")
     return _dash_env.state.model_dump()
+
+
+# ---------------------------------------------------------------------------
+# MARL endpoints — Multi-Agent coordination status
+# ---------------------------------------------------------------------------
+
+# Lazily initialised oversight agent (singleton for the server process)
+_oversight_agent = None
+
+def _get_oversight():
+    global _oversight_agent
+    if _oversight_agent is None:
+        from agents.oversight_agent import OversightAgent
+        _oversight_agent = OversightAgent(n_agents=5)
+    return _oversight_agent
+
+
+@app.get("/marl/status", tags=["MARL"])
+async def marl_status():
+    """Return current fleet coordination statistics from the OversightAgent."""
+    return _get_oversight().get_status()
+
+
+@app.get("/marl/conflicts", tags=["MARL"])
+async def marl_conflicts(last_n: int = 20):
+    """Return the last N conflict events detected by the OversightAgent."""
+    return _get_oversight().get_conflict_history(last_n=last_n)
+
+
+# ---------------------------------------------------------------------------
+# Curriculum endpoints — Long-Horizon planning progress
+# ---------------------------------------------------------------------------
+
+_curriculum_manager = None
+
+def _get_curriculum():
+    global _curriculum_manager
+    if _curriculum_manager is None:
+        from long_horizon.curriculum_manager import CurriculumManager
+        _curriculum_manager = CurriculumManager(initial_stage=1)
+    return _curriculum_manager
+
+
+@app.get("/curriculum/status", tags=["Curriculum"])
+async def curriculum_status():
+    """Return the current curriculum stage and episode progress."""
+    return _get_curriculum().get_progress()
+
+
+# ---------------------------------------------------------------------------
+# Self-Improvement endpoints — weakness detection
+# ---------------------------------------------------------------------------
+
+_weakness_detector = None
+
+def _get_weakness_detector():
+    global _weakness_detector
+    if _weakness_detector is None:
+        from self_improvement.weakness_detector import WeaknessDetector
+        _weakness_detector = WeaknessDetector()
+    return _weakness_detector
+
+
+@app.get("/selfplay/weaknesses", tags=["Self-Improvement"])
+async def selfplay_weaknesses():
+    """Return the latest weakness report (clusters of failing scenarios)."""
+    wd = _get_weakness_detector()
+    report = wd.get_latest()
+    if report is None:
+        return {"clusters": [], "iteration": 0, "message": "No weaknesses analyzed yet"}
+    return report.to_dict()
+
+
+@app.get("/selfplay/iterations", tags=["Self-Improvement"])
+async def selfplay_iterations():
+    """Return the improvement history across all self-play iterations."""
+    wd = _get_weakness_detector()
+    return wd.get_improvement_summary()
+
+
+# ---------------------------------------------------------------------------
+# Demo endpoint — compare trained vs baseline on a given scenario
+# ---------------------------------------------------------------------------
+
+@app.post("/demo/scenario", tags=["Demo"])
+async def demo_scenario(body: dict = Body(default={})):
+    """
+    Run a scenario against the trained DQN agent and a greedy baseline.
+    Returns both scores for comparison.
+
+    Request body (all optional):
+        n_ambulances (int), n_hospitals (int), max_steps (int), seed (int)
+    """
+    from agents.greedy_agent import GreedyAgent
+    from rl.state_encoder import StateEncoder
+    from rl.action_mapper import ActionMapper
+    from rl.action_mask import ActionMask
+
+    n_amb   = int(body.get("n_ambulances", 4))
+    n_hosp  = int(body.get("n_hospitals", 3))
+    steps   = int(body.get("max_steps", 80))
+    seed    = int(body.get("seed", 0))
+
+    cfg = {"n_ambulances": n_amb, "n_hospitals": n_hosp, "max_steps": steps, "seed": seed}
+
+    def run_greedy(cfg: dict) -> float:
+        env = _RawEnv(cfg)
+        obs = env.reset(seed=seed)
+        agent = GreedyAgent()
+        for _ in range(steps):
+            action = agent.act(obs)
+            obs = env.step(action)
+            if obs.done:
+                break
+        served = env.metrics.get("served", 0)
+        missed = env.metrics.get("missed", 0)
+        total = served + missed
+        return round(served / total, 4) if total else 0.0
+
+    def run_dqn(cfg: dict) -> float:
+        import torch, pathlib
+        from rl.rl_agent import DQNAgent
+        model_path = pathlib.Path("outputs/marl/agent_0.pt")
+        env = _RawEnv(cfg)
+        obs = env.reset(seed=seed)
+        encoder = StateEncoder()
+        mapper = ActionMapper()
+        mask_builder = ActionMask()
+        state0 = encoder.encode(obs)
+        mapper.build_action_space(obs)
+        action_size = mapper.size()
+        agent = DQNAgent(len(state0), action_size, use_dueling=True, use_per=False)
+        if model_path.exists():
+            agent.policy_net.load_state_dict(torch.load(str(model_path), map_location="cpu"))
+        agent.epsilon = 0.0  # evaluation mode
+        for _ in range(steps):
+            state = encoder.encode(obs)
+            mapper.build_action_space(obs)
+            mask = mask_builder.build_mask(mapper)
+            idx = agent.act(state, mask)
+            action = mapper.decode(idx)
+            obs = env.step(action)
+            if obs.done:
+                break
+        served = env.metrics.get("served", 0)
+        missed = env.metrics.get("missed", 0)
+        total = served + missed
+        return round(served / total, 4) if total else 0.0
+
+    greedy_score = run_greedy(cfg)
+    dqn_score = run_dqn(cfg)
+
+    return {
+        "config": cfg,
+        "greedy_score": greedy_score,
+        "dqn_score": dqn_score,
+        "improvement": round(dqn_score - greedy_score, 4),
+    }
+
+
+# ---------------------------------------------------------------------------
+# RFC WebSocket live feed — pushes state at 2 Hz
+# ---------------------------------------------------------------------------
+
+import asyncio
+from fastapi import WebSocket, WebSocketDisconnect
+
+
+@app.websocket("/ws/live")
+async def websocket_live(websocket: WebSocket):
+    """
+    WebSocket live feed — pushes environment state at 2 Hz (every 500ms).
+    Clients receive JSON with: step, ambulances, emergencies, hospitals,
+    traffic, reward, done, metrics.
+    """
+    await websocket.accept()
+    try:
+        while True:
+            global _dash_env, _dash_last_obs
+            if _dash_env is not None and _dash_last_obs is not None:
+                payload = {
+                    "step":        _dash_last_obs.step,
+                    "reward":      _dash_last_obs.reward,
+                    "done":        _dash_last_obs.done,
+                    "ambulances":  [a.model_dump() for a in _dash_last_obs.ambulances],
+                    "emergencies": [e.model_dump() for e in _dash_last_obs.emergencies],
+                    "hospitals":   [h.model_dump() for h in _dash_last_obs.hospitals],
+                    "traffic":     _dash_last_obs.traffic,
+                    "metrics":     _dash_env.metrics if _dash_env else {},
+                }
+                await websocket.send_json(payload)
+            await asyncio.sleep(0.5)  # 2 Hz
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# /score benchmark endpoint — runs all three tasks and returns live scores
+# ---------------------------------------------------------------------------
+
+@app.get("/score", tags=["Benchmark"])
+async def benchmark_score():
+    """
+    Run a quick benchmark with RepositioningOracle agent and return scores.
+    Warning: This is CPU-intensive and takes ~2-5 seconds.
+    """
+    import random as _random
+    import numpy as _np
+    from agents.repositioning_oracle import RepositioningOracle
+    from tasks.easy import EasyConfig
+    from tasks.medium import MediumConfig
+    from tasks.hard import HardConfig
+    from grader_easy import grade_easy
+    from grader_medium import grade_medium
+    from grader_hard import grade_hard
+
+    results = {}
+    tasks = [
+        ("easy",   EasyConfig(),   grade_easy),
+        ("medium", MediumConfig(), grade_medium),
+        ("hard",   HardConfig(),   grade_hard),
+    ]
+
+    for task_name, cfg, grader in tasks:
+        _random.seed(42)
+        _np.random.seed(42)
+        env = _RawEnv(cfg.to_dict())
+        obs = env.reset(seed=cfg.seed)
+        enable_repos = task_name != "medium"
+        agent = RepositioningOracle(enable_reposition=enable_repos).bind_env(env)
+        done = False
+        step = 0
+        while not done and step < cfg.max_steps:
+            actions = agent.act_all_with_reposition(obs)
+            obs = env.step_all(actions)   # ONE physics tick — correct multi-dispatch
+            done = bool(obs.done)
+            step += 1
+        m = env.metrics
+        episode_info = {
+            "response_times":    list(m.get("response_times", [])),
+            "optimal_times":     list(m.get("optimal_times", [])),
+            "served":            int(m.get("served", 0)),
+            "total_emergencies": int(m.get("total_emergencies", 0)),
+            "avg_response_time": float(m.get("avg_response_time", 0.0)),
+            "idle_steps":        int(m.get("idle_steps", 0)),
+            "total_steps":       int(m.get("total_steps", step)),
+            "critical_served":   int(m.get("critical_served", 0)),
+            "critical_total":    int(m.get("critical_total", 0)),
+            "priority_correct":  int(m.get("priority_correct", 0)),
+            "priority_total":    int(m.get("priority_total", 0)),
+            "capacity_violations": int(m.get("capacity_violations", 0)),
+            "fairness_zone_counts": {
+                "zone_served": dict(m.get("zone_served", {})),
+                "zone_total":  dict(m.get("zone_total", {})),
+            },
+        }
+        score = grader(episode_info)
+        results[task_name] = {"score": score, "metrics": m}
+
+    return {
+        "scores": {k: v["score"] for k, v in results.items()},
+        "agent": "RepositioningOracle",
+        "seed": 42,
+        "details": results,
+    }
 
 
 # ---------------------------------------------------------------------------

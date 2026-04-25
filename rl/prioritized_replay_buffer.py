@@ -98,7 +98,8 @@ class PrioritizedReplayBuffer:
     def update_priorities(self, batch_indices, batch_priorities):
         """Update priorities after computing TD-errors."""
         for idx, prio in zip(batch_indices, batch_priorities):
-            self.priorities[idx] = float(abs(prio)) + 1e-6
+            scalar = prio.item() if hasattr(prio, "item") else float(np.asarray(prio).flat[0])
+            self.priorities[idx] = float(abs(scalar)) + 1e-6
 
     def __len__(self):
         return len(self.buffer)

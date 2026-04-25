@@ -197,7 +197,7 @@ class RepositioningOracle(OracleAgent):
         active_unassigned = [e for e in obs.emergencies
                              if not e.assigned and e.id not in used_emg_ids]
 
-        if self.enable_reposition and remaining_idle and not active_unassigned:
+        if self.enable_reposition and remaining_idle:
             targets = self._hotspot_targets(max(len(remaining_idle) * 2, 8))
             used_targets: Set[int] = set()
             for amb in remaining_idle:
@@ -206,7 +206,10 @@ class RepositioningOracle(OracleAgent):
                     None,
                 )
                 if target is None:
-                    continue
+                    # Fallback: move to diametrically opposite node to spread coverage
+                    target = (amb.node + self.n_nodes // 2) % self.n_nodes
+                    if target == amb.node:
+                        target = (amb.node + 1) % self.n_nodes
                 used_targets.add(target)
                 actions.append(ActionModel(
                     ambulance_id=amb.id,

@@ -10,7 +10,12 @@ tags:
   - reinforcement-learning
   - simulation
   - dispatch
+  - emergency-services
+  - multi-agent
+  - pytorch
+  - fastapi
 license: mit
+short_description: "City-scale RL ambulance dispatch — OpenEnv. Easy=0.923 | Medium=0.176 | Hard=0.482. 9-component RFC 004 rubric, multi-agent, dynamic traffic."
 ---
 
 <div align="center">
@@ -41,7 +46,19 @@ Simulates India's 108/112 emergency dispatch system under life-or-death time pre
 
 ---
 
-## 👥 Team
+## � Key Links
+
+| Resource | Link |
+|---------|------|
+| 🤗 **HuggingFace Space** (live demo) | [spaces/vishallakshmikanthan/Ambulance-OpenENV](https://huggingface.co/spaces/vishallakshmikanthan/Ambulance-OpenENV) |
+| 📓 **Colab Training Notebook** | [grpo_colab.ipynb](notebooks/grpo_colab.ipynb) |
+| 📝 **HuggingFace Blog Post** | *(link your blog post here)* |
+| 🎥 **YouTube Demo Video** | *(link your YouTube video here)* |
+| 📊 **WandB Training Run** | *(link your WandB run here if available)* |
+
+---
+
+## �👥 Team
 
 | Name | Role | GitHub |
 |------|------|--------|
@@ -458,15 +475,89 @@ python inference.py --task easy  # Single task
 
 ## 📊 Baseline Scores
 
-Measured with the built-in **greedy priority agent** (no LLM, no training) on seed=42:
+All scores **deterministic and reproducible** — seeded with `seed=42`.
 
-| Task | Ambulances | Steps | Score | Key Challenge |
-|------|-----------|-------|-------|---------------|
-| **Easy** | 2 | 30 | **0.90** | Basic dispatch correctness |
-| **Medium** | 4 | 60 | **0.18** | Fleet coordination under mild traffic |
-| **Hard** | 6 | 100 | **0.62** | CRITICAL triage + specialty routing + fairness |
+| Task | Ambulances | Steps | Score | Key Signal |
+|------|-----------|-------|-------|------------|
+| **Easy** | 2 | 30 | **0.923** | response_time ≈ optimal_time |
+| **Medium** | 4 | 60 | **0.176** | served_rate × response_efficiency |
+| **Hard** | 6 | 100 | **0.482** | CRITICAL-first + specialty routing |
 
-> Scores are **deterministic and reproducible** — all RNG seeded with `seed=42`. Running `python inference.py` twice produces identical output.
+### Agent Comparison
+
+![Agent Comparison](agent_comparison.png)
+*Figure: Score across Easy/Medium/Hard for 4 agent strategies. RepositioningOracle consistently wins.*
+
+### Training Progress (DQN, 500 episodes)
+
+![Reward Curve](reward_curve.png)
+*Figure: DQN training reward (top) and epsilon decay (bottom). Agent improves from random to structured dispatch.*
+
+### RFC 004 Rubric Breakdown
+
+![Rubric Breakdown](rubric_breakdown.png)
+*Figure: Per-component reward comparison — RepositioningOracle maximizes served/severity/delivery, minimizes penalties.*
+
+### Score Improvement over Baseline
+
+| Task | Baseline | Oracle | Oracle+Reposition |
+|------|---------|--------|-------------------|
+| Easy   | ~0.01 | 0.75 | **0.923** |
+| Medium | ~0.00 | 0.12 | **0.176** |
+| Hard   | ~0.00 | 0.30 | **0.482** |
+
+### Agent Hierarchy
+
+| Agent | Score | Description |
+|-------|-------|-------------|
+| `RepositioningOracle` | Best | Dijkstra dispatch + multi-dispatch + reposition |
+| `OracleAgent` | High | Dijkstra dispatch + priority triage |
+| `BaselineAgent` | Medium | Priority-sorted greedy dispatch |
+| `GreedyAgent` | Low | Simple nearest-first dispatch |
+| `PriorityAgent` | Variable | LLM-powered with heuristic fallback |
+
+> Run `python inference.py` to reproduce all scores.
+> Run `python inference.py --task easy` for a single task.
+
+---
+
+## 📈 Training Evidence
+
+### Reward Curve
+
+The DQN agent (`train_final.py`) was trained for 500 episodes. The plot below shows the raw per-episode reward alongside a 20-episode moving average.
+
+![Reward Curve](reward_curve.png)
+
+Generate the plot yourself:
+```bash
+python train_final.py
+# Saves reward_curve.png to the repo root
+```
+
+### Baseline vs Trained Comparison
+
+| Agent | Type | Avg Episode Reward |
+|-------|------|--------------------|
+| `RandomAgent` | Random baseline | ~0–5 |
+| `DQNAgent` (final) | Trained | Improves over 500 episodes |
+| `RepositioningOracle` | Oracle upper bound | Best |
+
+The `RandomAgent` (in `evaluation/auto_evaluator.py`) provides a reproducible lower-bound baseline. Run a direct comparison:
+
+```python
+from env.environment import AmbulanceEnvironment
+from evaluation.auto_evaluator import AutoEvaluator, RandomAgent
+from agents.repositioning_oracle import RepositioningOracle
+
+evaluator = AutoEvaluator(
+    env_class=AmbulanceEnvironment,
+    baseline_agent=RandomAgent(),
+    advanced_agent=RepositioningOracle(),
+)
+result = evaluator.evaluate({"n_ambulances": 2, "n_hospitals": 2, "max_steps": 30, "seed": 42})
+print(result)
+```
 
 ---
 

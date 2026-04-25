@@ -1,69 +1,87 @@
 name: ambulance-dispatch-env
 version: 1.0.0
 description: |
-  Multi-constraint reinforcement learning environment for city-scale ambulance
+  Production-grade reinforcement learning environment for city-scale ambulance
   dispatch optimisation. Agents manage a fleet of ambulances across a
-  Barabasi-Albert road network, routing to emergencies of three severity tiers
-  (CRITICAL, HIGH, NORMAL) while respecting hospital capacity limits and
-  dynamic rush-hour traffic multipliers.
+  Barabási-Albert road network, routing to emergencies of three severity tiers
+  (CRITICAL, HIGH, NORMAL) under dynamic rush-hour traffic, hospital capacity
+  limits, and specialty routing constraints. Features a 9-component RFC 004
+  Rubric for per-component training introspection and full RFC 001-005 compliance.
+  Simulates India's 108/112 emergency dispatch system.
+author: "Ambulance-OpenENV Team — CSNEHA20, Vishallakshmikanthan"
+documentation_url: https://github.com/CSNEHA20/Meta_PyTorch_OpenEnv_Hackathon
+huggingface_space: "https://huggingface.co/spaces/vishallakshmikanthan/Ambulance-OpenENV"
+tags:
+  - openenv
+  - reinforcement-learning
+  - ambulance-dispatch
+  - multi-agent
+  - emergency-services
+  - pytorch
+  - fastapi
 
-  Ambulance dispatch is a real-world professional task performed by trained
-  operators in every country. The environment models the 108/112 emergency
-  dispatch network with life-or-death stakes and measurable impact on
-  emergency response times. Reward is computed via an RFC 004 Rubric with
-  nine named components for per-component training introspection.
-author: Ambulance-OpenENV Team
-documentation_url: https://github.com/your-org/ambulance-openenv
+inference_script: inference.py
 
 action_space:
   type: object
+  required: []
+  additionalProperties: false
   properties:
     ambulance_id:
-      type: integer
-      description: ID of the idle ambulance to dispatch (0-indexed)
+      type: ["integer", "null"]
+      description: "ID of idle ambulance to dispatch (0-indexed)"
     emergency_id:
       type: string
-      description: UUID of the target unassigned emergency
+      description: "UUID of the target unassigned emergency"
     hospital_id:
-      type: integer
-      description: ID of the destination hospital (0-indexed)
+      type: ["integer", "null"]
+      description: "ID of destination hospital (0-indexed)"
     reposition_node:
-      type: integer
-      description: Graph node to reposition an idle ambulance to (optional)
+      type: ["integer", "null"]
+      description: "Graph node to proactively reposition idle ambulance"
     is_noop:
       type: boolean
-      description: When true, skip dispatch and advance one simulation step
+      default: false
+      description: "Skip dispatch and advance simulation by one step"
 
 observation_space:
   type: object
   properties:
     ambulances:
       type: array
-      description: State of every ambulance (node, FSM state, ETA, targets)
+      description: "Fleet status: node position, FSM state, ETA, assigned targets"
     emergencies:
       type: array
-      description: Active unassigned emergencies (node, severity, time remaining)
+      description: "Active unassigned incidents: node, severity tier, time_remaining"
     hospitals:
       type: array
-      description: Hospital status (node, capacity, current occupancy, specialty)
+      description: "Hospital network: node, capacity, current_patients, specialty"
     traffic:
       type: object
-      description: Traffic multipliers keyed by edge or "global"
+      description: "Global traffic multiplier (1.0=normal, 2.5=rush hour)"
     step:
       type: integer
-      description: Current simulation step counter
+      description: "Current simulation timestep"
     reward:
       type: number
-      description: Step reward computed by the RFC 004 Rubric
+      description: "Scalar step reward computed by RFC 004 Rubric (9 components)"
     done:
       type: boolean
-      description: Whether the episode has terminated
+      description: "True when episode reaches max_steps"
+    rubric:
+      type: object
+      description: >
+        Per-component reward breakdown (RFC 004):
+        emergency_served, severity_bonus, dispatch_speed, hospital_delivery,
+        distance_penalty, traffic_penalty, idle_penalty, capacity_violation,
+        timeout_penalty
 
 tasks:
   - id: easy
     description: >
-      Two ambulances, 2 hospitals, no traffic variation.
-      Emergencies appear via Poisson (lambda=0.3). Tests basic dispatch correctness.
+      Minimal setup — 2 ambulances, 2 hospitals, 30 steps, no traffic.
+      Tests basic dispatch correctness and response time optimisation.
+      Grader: mean(optimal_time/actual_response_time), clamped [0,1].
     difficulty: easy
     max_steps: 30
     config:
@@ -72,11 +90,14 @@ tasks:
       max_steps: 30
       lambda_param: 0.3
       seed: 42
+    grader: grader_easy.grade_easy
+    baseline_score: 0.923
+
   - id: medium
     description: >
-      Four ambulances, 3 hospitals, mild traffic (1.0–1.3x), concurrent
-      Poisson emergencies (lambda=0.4). Tests fleet coordination and
-      hospital routing under partial congestion.
+      4 ambulances, 3 hospitals, mild traffic (1.0–1.3x), 60 steps.
+      Tests fleet coordination, priority dispatch, and hospital load balancing.
+      Grader: 0.50*served_pct + 0.35*response_score - 0.15*idle_fraction.
     difficulty: medium
     max_steps: 60
     config:
@@ -85,12 +106,16 @@ tasks:
       max_steps: 60
       lambda_param: 0.4
       seed: 42
+    grader: grader_medium.grade_medium
+    baseline_score: 0.176
+
   - id: hard
     description: >
-      Six ambulances, 4 hospitals with specialties, dynamic rush-hour traffic
-      (1.0–2.5x), Poisson emergencies (lambda=0.6), strict hospital capacity
-      constraints, full severity triage, incident events, fairness zones.
-      Tests optimal resource allocation under adversarial conditions.
+      6 ambulances, 4 specialty hospitals (Trauma/Cardiac/General/Paediatric),
+      dynamic rush-hour traffic (1.5–2.5x) + random incidents (3.0x), 100 steps.
+      Tests CRITICAL-first triage, specialty routing, zone fairness, and
+      hospital capacity management.
+      Grader: 0.50*weighted_served + 0.30*priority_accuracy + 0.15*fairness - penalty.
     difficulty: hard
     max_steps: 100
     config:
@@ -99,7 +124,12 @@ tasks:
       max_steps: 100
       lambda_param: 0.6
       seed: 42
-
-inference_script: inference.py
-runtime: python3.11
+    grader: grader_hard.grade_hard
+    baseline_score: 0.658
+rfc_compliance:
+  - RFC-001  # Base Env API
+  - RFC-002  # Auto-Discovery (/tools)
+  - RFC-003  # MCP Protocol (/mcp)
+  - RFC-004  # Named Rubric (9 components)
+  - RFC-005  # Concurrent Sessions
 

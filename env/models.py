@@ -16,9 +16,97 @@ class Rubric(BaseModel):
     capacity_violation: float = 0.0
     timeout_penalty: float = 0.0
     fairness_score: float = 0.0
+    validation_penalty: float = 0.0  # anti-reward-hacking deductions
 
     def total(self) -> float:
         return sum(self.model_dump().values())
+
+
+class RewardValidator:
+    """
+    Independent reward-signal validator.
+
+    Enforces three independent checks on every step so that reward signals
+    remain honest and cannot be exploited:
+
+    1. **Invalid-reference penalty** — ambulance_id / emergency_id / hospital_id
+       that do not exist in the live environment incur a flat −10 each.
+    2. **Loop-exploit detection** — tracks a rolling window of the last
+       ``window`` action fingerprints.  Penalty escalates with repetition:
+       ``−5 × repeat_count``, capped at ``−50``.
+    3. **Reward-inflation cap** — a single step can award at most
+       ``max_positive`` in positive reward components (emergency_served +
+       severity_bonus + hospital_delivery + dispatch_speed).  Anything above
+       the cap is clipped.  This prevents a single manufactured mega-step from
+       inflating episode scores.
+    """
+
+    MAX_POSITIVE_PER_STEP: float = 80.0   # CRITICAL serve + delivery ceiling
+    LOOP_WINDOW: int = 6                   # fingerprints remembered
+    LOOP_BASE_PENALTY: float = -5.0
+    LOOP_CAP: float = -50.0
+
+    def __init__(self) -> None:
+        self._action_history: list = []    # rolling fingerprint window
+
+    def reset(self) -> None:
+        self._action_history.clear()
+
+    # ------------------------------------------------------------------
+    # Check 1 — invalid references
+    # ------------------------------------------------------------------
+    def check_references(
+        self,
+        action: "ActionModel",
+        ambulance_ids: set,
+        emergency_ids: set,
+        hospital_ids: set,
+    ) -> float:
+        """Return total penalty for any invalid ID references in the action."""
+        penalty = 0.0
+        if action.is_noop or action.ambulance_id is None:
+            return penalty
+        if action.ambulance_id not in ambulance_ids:
+            penalty -= 10.0
+        if action.emergency_id and action.emergency_id not in emergency_ids:
+            penalty -= 10.0
+        if action.hospital_id is not None and action.hospital_id not in hospital_ids:
+            penalty -= 10.0
+        return penalty
+
+    # ------------------------------------------------------------------
+    # Check 2 — loop / exploit detection
+    # ------------------------------------------------------------------
+    def check_loop(self, action: "ActionModel") -> float:
+        """Penalise repeated identical dispatch actions (loop exploit)."""
+        if action.is_noop or action.ambulance_id is None:
+            return 0.0
+        fingerprint = (action.ambulance_id, action.emergency_id, action.hospital_id)
+        repeat_count = self._action_history.count(fingerprint)
+        self._action_history.append(fingerprint)
+        if len(self._action_history) > self.LOOP_WINDOW:
+            self._action_history.pop(0)
+        if repeat_count > 0:
+            return max(self.LOOP_BASE_PENALTY * repeat_count, self.LOOP_CAP)
+        return 0.0
+
+    # ------------------------------------------------------------------
+    # Check 3 — reward inflation cap
+    # ------------------------------------------------------------------
+    @staticmethod
+    def clip_positive(rubric: "Rubric") -> float:
+        """
+        Return an additional penalty if the positive components of this step
+        exceed the per-step ceiling.  Does NOT mutate the rubric.
+        """
+        positive = (
+            rubric.emergency_served
+            + rubric.severity_bonus
+            + rubric.hospital_delivery
+            + rubric.dispatch_speed
+        )
+        excess = positive - RewardValidator.MAX_POSITIVE_PER_STEP
+        return -max(0.0, excess)
 
 
 class AmbulanceState(str, Enum):

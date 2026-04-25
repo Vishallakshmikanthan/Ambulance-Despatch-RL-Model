@@ -1,5 +1,5 @@
 import numpy as np
-from typing import List
+from typing import List, Optional
 from env.models import ObservationModel, AmbulanceState, Severity
 
 class StateEncoder:
@@ -21,9 +21,11 @@ class StateEncoder:
     TIME_NORM = 50
     CAPACITY_NORM = 50
     
-    def __init__(self, max_nodes: int = None, max_ambulances: int = 6, max_hospitals: int = 4):
+    def __init__(self, max_nodes: int = None, max_ambulances: int = 6, max_hospitals: int = 4,
+                 history_encoder=None):
         self.max_ambulances = max_ambulances
         self.max_hospitals = max_hospitals
+        self.history_encoder = history_encoder  # Optional HistoryEncoder for long-horizon state
         # Deterministic mappings for one-hot encoding
         self.state_map = {
             AmbulanceState.IDLE: 0,
@@ -115,9 +117,19 @@ class StateEncoder:
                 
         # Concatenate and clamp all features between 0 and 1 for stable training
         state = np.array(features, dtype=np.float32)
-        return np.clip(state, 0, 1)
+        state = np.clip(state, 0, 1)
+
+        # Step 8.5 — append history features if a HistoryEncoder is attached
+        if self.history_encoder is not None:
+            history_features = self.history_encoder.encode()
+            state = np.concatenate([state, history_features]).astype(np.float32)
+
+        return state
 
     @property
     def feature_dim(self) -> int:
         """Returns the fixed size of the encoded state vector."""
-        return (self.max_ambulances * 8) + (self.MAX_EMERGENCIES * 6) + (self.max_hospitals * 4)
+        base = (self.max_ambulances * 8) + (self.MAX_EMERGENCIES * 6) + (self.max_hospitals * 4)
+        if self.history_encoder is not None:
+            return base + getattr(self.history_encoder, "FEATURE_DIM", 25)
+        return base
