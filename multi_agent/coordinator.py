@@ -49,19 +49,21 @@ class MultiAgentCoordinator:
     #  Construction                                                        #
     # ------------------------------------------------------------------ #
 
-    def __init__(self, n_ambulances: int = 2, action_size: int = 11):
+    def __init__(self, n_ambulances: int = 2, action_size: int = None):
         self.n_ambulances = n_ambulances
-        self.action_size = action_size
-
-        # Independent Q-agents — one per ambulance (Step 7.2)
-        self.fleet_agents: Dict[int, AmbulanceQAgent] = {
-            i: AmbulanceQAgent(agent_id=i, n_agents=n_ambulances, action_size=action_size)
-            for i in range(n_ambulances)
-        }
-
-        # Shared action mapper / mask builder
+        
+        # Shared action mapper / mask builder (must initialize before setting action_size)
         self.mapper = ActionMapper()
         self.mask_builder = ActionMask()
+        
+        # Use provided action_size or derive from ActionMapper
+        self.action_size = action_size if action_size is not None else self.mapper.size()
+        
+        # Independent Q-agents — one per ambulance (Step 7.2)
+        self.fleet_agents: Dict[int, AmbulanceQAgent] = {
+            i: AmbulanceQAgent(agent_id=i, n_agents=n_ambulances, action_size=self.action_size)
+            for i in range(n_ambulances)
+        }
 
         # Legacy heuristic pipeline (kept for backward-compat)
         self.dispatcher = DispatcherAgent()
