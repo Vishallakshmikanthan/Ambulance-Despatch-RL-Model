@@ -513,8 +513,10 @@ def _train_single(args):
             # Decode to ActionModel
             action = mapper.decode(action_index)
 
-            # Step environment
-            next_obs, reward, done, info = env.step(action)
+            # Step environment (returns ObservationModel with reward, done, rubric attached)
+            next_obs = env.step(action)
+            reward = next_obs.reward
+            done = next_obs.done
 
             # Apply Reward Shaping
             # Note: env.step() already includes coordination penalty and future-aware bonus.
@@ -584,7 +586,7 @@ def _train_single(args):
         
         # Periodic logging
         if (episode + 1) % 1 == 0:
-            success = info.get("metrics", {}).get("successful_dispatches", 0)
+            success = env.metrics.get("served", 0)
             print(f"Episode {episode+1}:")
             print(f"Reward: {total_reward:.1f}")
             print(f"Success: {success}")
